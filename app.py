@@ -51,14 +51,63 @@ class AirtableConfig:
         )
 
 
+def _valor_secreto(chaves: List[str], predefinido: str = "") -> str:
+    """Tenta obter um valor de ``st.secrets`` suportando níveis hierárquicos."""
+
+    try:
+        segredo_atual = st.secrets  # type: ignore[attr-defined]
+    except Exception:  # pragma: no cover - comportamento depende do runtime
+        return predefinido
+
+    for chave in chaves:
+        if isinstance(segredo_atual, dict) and chave in segredo_atual:
+            segredo_atual = segredo_atual[chave]
+        else:
+            return predefinido
+
+    if isinstance(segredo_atual, (str, int, float)):
+        return str(segredo_atual)
+
+    return predefinido
+
+
+def _ler_valor_config(chaves_secrets: List[List[str]], env_key: str, fallback: str = "") -> str:
+    """Obtém o valor de secrets, depois variáveis de ambiente e, por fim, um default."""
+
+    for chaves in chaves_secrets:
+        valor = _valor_secreto(chaves, "")
+        if valor:
+            return valor
+
+    valor_env = os.getenv(env_key, "")
+    if valor_env:
+        return valor_env
+
+    return fallback
+
+
 def obter_configuracao() -> AirtableConfig:
-    """Lê as credenciais do Airtable a partir do sidebar ou variáveis de ambiente."""
+    """Lê as credenciais do Airtable a partir do sidebar, secrets ou variáveis de ambiente."""
     if "airtable_config" not in st.session_state:
         st.session_state.airtable_config = AirtableConfig(
-            api_key=os.getenv("AIRTABLE_API_KEY", ""),
-            base_id=os.getenv("AIRTABLE_BASE_ID", ""),
-            inventory_table=os.getenv("AIRTABLE_INVENTORY_TABLE", "Inventário"),
-            transactions_table=os.getenv("AIRTABLE_TRANSACTIONS_TABLE", "Movimentos"),
+            api_key=_ler_valor_config(
+                [["airtable", "api_key"], ["AIRTABLE_API_KEY"]],
+                "AIRTABLE_API_KEY",
+            ),
+            base_id=_ler_valor_config(
+                [["airtable", "base_id"], ["AIRTABLE_BASE_ID"]],
+                "AIRTABLE_BASE_ID",
+            ),
+            inventory_table=_ler_valor_config(
+                [["airtable", "inventory_table"], ["AIRTABLE_INVENTORY_TABLE"]],
+                "AIRTABLE_INVENTORY_TABLE",
+                "Inventário",
+            ),
+            transactions_table=_ler_valor_config(
+                [["airtable", "transactions_table"], ["AIRTABLE_TRANSACTIONS_TABLE"]],
+                "AIRTABLE_TRANSACTIONS_TABLE",
+                "Movimentos",
+            ),
         )
 
     config: AirtableConfig = st.session_state.airtable_config

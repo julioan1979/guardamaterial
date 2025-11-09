@@ -26,7 +26,17 @@ Aplicação em [Streamlit](https://streamlit.io/) para gerir o inventário das d
    AIRTABLE_TRANSACTIONS_TABLE = "Movimentos"
    ```
 
-   Também é possível introduzir estes valores no menu lateral da aplicação.
+   Também é possível utilizar uma secção dedicada:
+
+   ```toml
+   [airtable]
+   api_key = "key..."
+   base_id = "app..."
+   inventory_table = "Inventário"
+   transactions_table = "Movimentos"
+   ```
+
+   A aplicação lê automaticamente estes valores (quer estejam numa secção `[airtable]` ou na raiz do ficheiro/variáveis de ambiente), continuando a permitir a sua edição no menu lateral.
 
 ## Execução local
 1. Instale as dependências:
