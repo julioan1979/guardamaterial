@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 import streamlit as st
-from pyairtable import Table
+from pyairtable import Api, Table
 
 st.set_page_config(
     page_title="Gestão de Stock - Escuteiros",
@@ -109,10 +109,33 @@ def obter_configuracao() -> AirtableConfig:
     return st.session_state.airtable_config
 
 
+def obter_cliente_airtable(config: AirtableConfig) -> Api:
+    """Cria (ou reutiliza) um cliente da API do Airtable.
+
+    O cliente fica em cache na sessão para evitar múltiplas inicializações ao
+    longo do ciclo de vida da aplicação Streamlit.
+    """
+
+    chave_cliente = (config.api_key, config.base_id)
+    cliente_guardado = st.session_state.get("_airtable_client")
+    chave_guardada = st.session_state.get("_airtable_client_key")
+
+    if cliente_guardado is None or chave_guardada != chave_cliente:
+        st.session_state["_airtable_client"] = Api(config.api_key)
+        st.session_state["_airtable_client_key"] = chave_cliente
+
+    return st.session_state["_airtable_client"]
+
+
+def obter_tabela(config: AirtableConfig, nome_tabela: str) -> Table:
+    cliente = obter_cliente_airtable(config)
+    return cliente.table(config.base_id, nome_tabela)
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def carregar_inventario(config: AirtableConfig) -> pd.DataFrame:
     """Obtém todos os artigos do inventário."""
-    tabela = Table(config.api_key, config.base_id, config.inventory_table)
+    tabela = obter_tabela(config, config.inventory_table)
     registos = tabela.all()
 
     dados: List[Dict[str, Optional[str]]] = []
@@ -153,7 +176,7 @@ def carregar_inventario(config: AirtableConfig) -> pd.DataFrame:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def carregar_movimentos(config: AirtableConfig) -> pd.DataFrame:
-    tabela = Table(config.api_key, config.base_id, config.transactions_table)
+    tabela = obter_tabela(config, config.transactions_table)
     registos = tabela.all(sort=[("Data", "desc")])
 
     dados: List[Dict[str, Optional[str]]] = []
@@ -198,12 +221,12 @@ def limpar_caches():
 
 
 def criar_tabela_movimentos(config: AirtableConfig, movimento: Dict[str, object]) -> None:
-    tabela = Table(config.api_key, config.base_id, config.transactions_table)
+    tabela = obter_tabela(config, config.transactions_table)
     tabela.create(movimento)
 
 
 def atualizar_quantidade(config: AirtableConfig, registo_id: str, nova_quantidade: int) -> None:
-    tabela = Table(config.api_key, config.base_id, config.inventory_table)
+    tabela = obter_tabela(config, config.inventory_table)
     tabela.update(
         registo_id,
         {
@@ -214,17 +237,17 @@ def atualizar_quantidade(config: AirtableConfig, registo_id: str, nova_quantidad
 
 
 def criar_registo_inventario(config: AirtableConfig, dados: Dict[str, object]) -> None:
-    tabela = Table(config.api_key, config.base_id, config.inventory_table)
+    tabela = obter_tabela(config, config.inventory_table)
     tabela.create(dados | {"Atualizado em": datetime.utcnow().isoformat()})
 
 
 def atualizar_artigo(config: AirtableConfig, registo_id: str, campos: Dict[str, object]) -> None:
-    tabela = Table(config.api_key, config.base_id, config.inventory_table)
+    tabela = obter_tabela(config, config.inventory_table)
     tabela.update(registo_id, campos | {"Atualizado em": datetime.utcnow().isoformat()})
 
 
 def apagar_artigo(config: AirtableConfig, registo_id: str) -> None:
-    tabela = Table(config.api_key, config.base_id, config.inventory_table)
+    tabela = obter_tabela(config, config.inventory_table)
     tabela.delete(registo_id)
 
 
