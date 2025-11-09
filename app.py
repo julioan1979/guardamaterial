@@ -562,10 +562,26 @@ def main() -> None:
         interface_documentacao()
         return
 
-    interface_resumo(inventario)
-    interface_gestao_inventario(config, inventario)
-    interface_movimentos(config, inventario)
-    interface_documentacao()
+    tab_inventario, tab_movimentos, tab_resumo, tab_documentacao = st.tabs(
+        [
+            "Inventário",
+            "Movimentos",
+            "Resumo",
+            "Documentação",
+        ]
+    )
+
+    with tab_inventario:
+        interface_gestao_inventario(config, inventario)
+
+    with tab_movimentos:
+        interface_movimentos(config, inventario)
+
+    with tab_resumo:
+        interface_resumo(inventario)
+
+    with tab_documentacao:
+        interface_documentacao()
 
 
 if __name__ == "__main__":
