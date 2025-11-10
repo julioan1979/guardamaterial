@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from functools import lru_cache
 from typing import Any, Dict, Iterable, Optional, Sequence
 
@@ -23,17 +24,44 @@ _PLAINTEXT_PASSWORD_FIELD_ENV = "AIRTABLE_PLAINTEXT_PASSWORD_FIELD"
 _DEFAULT_PLAINTEXT_PASSWORD_FIELD = "Palavra-passe"
 
 
+_MISSING = object()
+
+
+def _normalised_mapping_lookup(mapping: Mapping[str, Any], key: str) -> Any:
+    """Try to fetch ``key`` from ``mapping`` using a case-insensitive match."""
+
+    if key in mapping:
+        return mapping[key]
+
+    key_lower = key.casefold()
+    for existing_key in mapping:
+        if isinstance(existing_key, str) and existing_key.casefold() == key_lower:
+            return mapping[existing_key]
+    return _MISSING
+
+
 def _get_secret_value(*keys: str) -> Optional[str]:
     """Return a (possibly nested) value from ``st.secrets`` if available."""
+
     if st is None:  # Streamlit not available (e.g., running tests)
         return None
 
     try:
         value: Any = st.secrets
-        for key in keys:
-            value = value[key]
     except Exception:  # pragma: no cover - depends on runtime configuration
         return None
+
+    for key in keys:
+        if isinstance(value, Mapping):
+            value = _normalised_mapping_lookup(value, key)
+            if value is _MISSING:
+                return None
+            continue
+
+        try:
+            value = value[key]  # type: ignore[index]
+        except Exception:  # pragma: no cover - fallback for exotic secrets objects
+            return None
 
     if isinstance(value, (str, int, float)):
         return str(value)

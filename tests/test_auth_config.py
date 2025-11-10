@@ -158,6 +158,23 @@ class AirtableCredentialsTests(unittest.TestCase):
 
         self.assertEqual(credentials, ("top-key", "top-base"))
 
+    def test_lowercase_secrets_are_supported(self) -> None:
+        """Secrets definidos em minúsculas devem ser aceites para compatibilidade."""
+
+        auth.st = SimpleNamespace(
+            secrets={
+                "airtable_api_key": "lower-key",
+                "airtable_base_id": "lower-base",
+            }
+        )
+
+        with _EnvVarGuard("AIRTABLE_API_KEY", "AIRTABLE_BASE_ID"):
+            os.environ.pop("AIRTABLE_API_KEY", None)
+            os.environ.pop("AIRTABLE_BASE_ID", None)
+            credentials = auth.get_airtable_credentials()
+
+        self.assertEqual(credentials, ("lower-key", "lower-base"))
+
 
 class AirtableErrorFormattingTests(unittest.TestCase):
     """Testes para o formatação de erros ao comunicar com o Airtable."""
