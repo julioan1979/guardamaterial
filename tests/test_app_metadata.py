@@ -27,9 +27,11 @@ app_module = _load_app_module()
 
 BaseMetadata = app_module.BaseMetadata
 TableMetadata = app_module.TableMetadata
+AirtableConfig = app_module.AirtableConfig
 _parse_metadata_tables = app_module._parse_metadata_tables
 _build_airtable_metadata_url = app_module._build_airtable_metadata_url
 _request_airtable_metadata = app_module._request_airtable_metadata
+_formatar_erro_airtable = app_module._formatar_erro_airtable
 
 
 def test_parse_metadata_tables_extracts_tables_and_fields() -> None:
@@ -153,3 +155,54 @@ def test_request_airtable_metadata_invokes_api_request(monkeypatch) -> None:
         "method": "get",
         "url": "https://example.test/meta/bases/baseXYZ/tables",
     }
+
+
+class _DummyResponse:
+    def __init__(self, status_code: int, payload: dict[str, object]) -> None:
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> dict[str, object]:
+        return self._payload
+
+
+class _DummyAirtableException(Exception):
+    def __init__(self, message: str, *, response: object | None = None, error: object | None = None) -> None:
+        super().__init__(message)
+        self.response = response
+        self.error = error
+
+
+def test_formatar_erro_airtable_inclui_dica_para_tabelas() -> None:
+    config = AirtableConfig(
+        api_key="key123",
+        base_id="app123",
+        inventory_table="Inventário",
+        transactions_table="Movimentos",
+    )
+    exc = _DummyAirtableException(
+        "403 Client Error: Forbidden for url: https://api.airtable.com/v0/app123/Inventário",
+        response=_DummyResponse(403, {"type": "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND"}),
+    )
+
+    mensagem = _formatar_erro_airtable(exc, config)
+
+    assert "tabelas 'Inventário' e 'Movimentos'" in mensagem
+    assert "Detalhe técnico: 403 Client Error" in mensagem
+
+
+def test_formatar_erro_airtable_utiliza_payload_error_aninhado() -> None:
+    config = AirtableConfig(
+        api_key="key123",
+        base_id="app123",
+        inventory_table="Inventário",
+        transactions_table="Movimentos",
+    )
+    exc = _DummyAirtableException(
+        "403 Client Error: Forbidden",
+        error={"error": {"type": "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND"}},
+    )
+
+    mensagem = _formatar_erro_airtable(exc, config)
+
+    assert "AIRTABLE_INVENTORY_TABLE" in mensagem
