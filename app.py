@@ -292,7 +292,10 @@ def _formatar_erro_airtable(exc: Exception, config: AirtableConfig) -> str:
             f"('{config.base_id}') e se as tabelas '{config.inventory_table}' e "
             f"'{config.transactions_table}' existem com estes nomes. "
             "Pode ajustar os nomes na barra lateral ou através das variáveis "
-            "AIRTABLE_INVENTORY_TABLE e AIRTABLE_TRANSACTIONS_TABLE."
+            "AIRTABLE_INVENTORY_TABLE e AIRTABLE_TRANSACTIONS_TABLE. "
+            "Confirme também que o token inclui os scopes necessários "
+            "(por exemplo, `data.records:read`, `data.records:write` e "
+            "`schema.bases:read`)."
         )
     elif status_code == 401:
         partes.append(

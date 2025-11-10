@@ -189,6 +189,7 @@ def test_formatar_erro_airtable_inclui_dica_para_tabelas() -> None:
 
     assert "tabelas 'Inventário' e 'Movimentos'" in mensagem
     assert "Detalhe técnico: 403 Client Error" in mensagem
+    assert "data.records:read" in mensagem
 
 
 def test_formatar_erro_airtable_utiliza_payload_error_aninhado() -> None:
