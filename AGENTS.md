@@ -79,3 +79,4 @@ delete_record(record_id)
 - Cada novo módulo deve expor funções públicas documentadas na secção correspondente deste ficheiro.
 - As interações com Airtable devem ser mockadas nos testes para evitar dependência de rede.
 - Respeitar limites de taxa da API utilizando caching (`st.cache_data`) quando apropriado.
+- O agent de IA deve se conectar via API a base do airtable para ler as tabelas e colunas afim de melhor entender dos dados.
