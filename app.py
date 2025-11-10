@@ -310,7 +310,10 @@ def _formatar_erro_airtable(exc: Exception, config: AirtableConfig) -> str:
     status_code, error_type, mensagem = _detalhes_erro_airtable(exc)
 
     partes: List[str] = [
-        "Não foi possível comunicar com o Airtable. Confirme as credenciais configuradas e tente novamente."
+        (
+            "Erro: falha ao comunicar com a API do Airtable. "
+            "Confirme as credenciais definidas em `st.secrets` ou nas variáveis de ambiente."
+        )
     ]
 
     if error_type == "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND":
@@ -334,13 +337,28 @@ def _formatar_erro_airtable(exc: Exception, config: AirtableConfig) -> str:
             "O Airtable não encontrou o recurso solicitado (HTTP 404). "
             "Confirme o ID da base e os nomes das tabelas definidos na aplicação."
         )
+    elif status_code == 422:
+        partes.append(
+            "O pedido foi rejeitado por estar malformado (HTTP 422). "
+            "Verifique os campos obrigatórios e os tipos de dados enviados."
+        )
+    elif status_code == 429:
+        partes.append(
+            "Limite de taxa do Airtable excedido (HTTP 429). "
+            "Aguarde alguns segundos antes de tentar novamente."
+        )
 
     if mensagem:
         partes.append(f"Detalhe técnico: {mensagem}")
     elif status_code is not None:
         partes.append(f"Detalhe técnico: HTTP {status_code}")
 
-    return " ".join(parte.strip() for parte in partes if parte.strip())
+    partes.append(
+        "Verifique ainda: 1) dependências instaladas e importações corretas; "
+        "2) variáveis de ambiente obrigatórias definidas; 3) acesso à internet disponível."
+    )
+
+    return "\n\n".join(parte.strip() for parte in partes if parte.strip())
 
 
 def _build_airtable_metadata_url(api: Api, base_id: str) -> str:
