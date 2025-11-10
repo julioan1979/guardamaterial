@@ -70,10 +70,34 @@ def ensure_list(value: Optional[object]) -> List[object]:
 def encode_file_to_data_url(uploaded_file) -> Optional[str]:
     if uploaded_file is None:
         return None
+
+    start_position: Optional[int] = None
+    try:
+        start_position = uploaded_file.tell()
+    except (AttributeError, OSError, ValueError):  # pragma: no cover - depende do objecto
+        start_position = None
+
+    if start_position is not None:
+        try:
+            uploaded_file.seek(0)
+        except (AttributeError, OSError, ValueError):  # pragma: no cover - objecto sem seek
+            start_position = None
+
     bytes_buffer = uploaded_file.read()
+
+    if start_position is not None:
+        try:
+            uploaded_file.seek(start_position)
+        except (AttributeError, OSError, ValueError):  # pragma: no cover - objecto sem seek
+            pass
+
     if not bytes_buffer:
         return None
-    mime_type = uploaded_file.type or "application/octet-stream"
+
+    if isinstance(bytes_buffer, str):
+        bytes_buffer = bytes_buffer.encode("utf-8")
+
+    mime_type = getattr(uploaded_file, "type", None) or "application/octet-stream"
     base64_data = base64.b64encode(bytes_buffer).decode("utf-8")
     return f"data:{mime_type};base64,{base64_data}"
 
