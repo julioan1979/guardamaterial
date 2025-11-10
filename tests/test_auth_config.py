@@ -64,6 +64,44 @@ class ConfigValueTests(unittest.TestCase):
         self.assertEqual(value, "EnvUsers")
 
 
+class UsersTableConfigTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._original_st = auth.st
+
+    def tearDown(self) -> None:
+        auth.st = self._original_st
+
+    def test_custom_table_from_secrets_is_prioritized(self) -> None:
+        auth.st = SimpleNamespace(secrets={"airtable": {"users_table": "Custom"}})
+
+        with _EnvVarGuard(auth._USERS_TABLE_ENV):
+            os.environ.pop(auth._USERS_TABLE_ENV, None)
+            tables, is_custom = auth._get_users_table_config()
+
+        self.assertEqual(tables, ("Custom",))
+        self.assertTrue(is_custom)
+
+    def test_custom_table_from_env_is_used(self) -> None:
+        auth.st = SimpleNamespace(secrets={})
+
+        with _EnvVarGuard(auth._USERS_TABLE_ENV):
+            os.environ[auth._USERS_TABLE_ENV] = "EnvTable"
+            tables, is_custom = auth._get_users_table_config()
+
+        self.assertEqual(tables, ("EnvTable",))
+        self.assertTrue(is_custom)
+
+    def test_default_tables_include_portuguese_and_english(self) -> None:
+        auth.st = SimpleNamespace(secrets={})
+
+        with _EnvVarGuard(auth._USERS_TABLE_ENV):
+            os.environ.pop(auth._USERS_TABLE_ENV, None)
+            tables, is_custom = auth._get_users_table_config()
+
+        self.assertEqual(tables, ("Utilizadores", "Users"))
+        self.assertFalse(is_custom)
+
+
 class AirtableCredentialsTests(unittest.TestCase):
     """Tests for the ``get_airtable_credentials`` helper."""
 
