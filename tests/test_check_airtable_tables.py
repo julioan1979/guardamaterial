@@ -79,3 +79,53 @@ def test_table_comparison_reports_differences() -> None:
     extra_diff = comparison.field_differences["Extra"]
     assert extra_diff.expected == set()
     assert extra_diff.unexpected == {"Coluna"}
+
+
+def test_fetch_tables_metadata_queries_meta_endpoint(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class DummyApi:
+        def __init__(self, api_key: str) -> None:
+            captured.setdefault("api_keys", []).append(api_key)
+
+        def build_url(self, path: str) -> str:
+            captured["path"] = path
+            return f"https://example.test/{path}"
+
+        def request(self, method: str, url: str) -> object:
+            captured["method"] = method
+            captured["url"] = url
+            captured["requests"] = captured.get("requests", 0) + 1
+            return {
+                "tables": [
+                    {
+                        "name": "Inventário",
+                        "fields": [
+                            {"name": "Artigo"},
+                            {"name": ""},
+                            {"nome": "Inválido"},
+                        ],
+                    },
+                    {"name": ""},
+                    None,
+                ]
+            }
+
+    monkeypatch.setattr("scripts.check_airtable_tables.Api", DummyApi)
+
+    checker = AirtableTablesChecker(
+        api_key="token123",
+        base_id="baseXYZ",
+        expected_tables=(),
+    )
+
+    metadata_first = checker.fetch_tables_metadata()
+    metadata_second = checker.fetch_tables_metadata()
+
+    assert metadata_first == metadata_second == [
+        {"name": "Inventário", "fields": [{"name": "Artigo"}]}
+    ]
+    assert captured["path"] == "meta/bases/baseXYZ/tables"
+    assert captured["method"] == "get"
+    assert captured["url"] == "https://example.test/meta/bases/baseXYZ/tables"
+    assert captured["requests"] == 1

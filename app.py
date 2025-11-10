@@ -231,13 +231,26 @@ def _formatar_erro_metadados(exc: Exception, base_id: str) -> RuntimeError:
     return RuntimeError(mensagem)
 
 
+def _build_airtable_metadata_url(api: Api, base_id: str) -> str:
+    """Construir o URL absoluto para consultar os metadados de uma base."""
+
+    return api.build_url(f"meta/bases/{base_id}/tables")
+
+
+def _request_airtable_metadata(api: Api, base_id: str) -> object:
+    """Efetua a chamada HTTP à API de metadados do Airtable."""
+
+    url = _build_airtable_metadata_url(api, base_id)
+    return api.request("get", url)
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def carregar_metadados_base(api_key: str, base_id: str) -> BaseMetadata:
     """Obtém os metadados disponíveis da base configurada no Airtable."""
 
     api = Api(api_key)
     try:
-        response = api.request("get", f"/meta/bases/{base_id}/tables")
+        response = _request_airtable_metadata(api, base_id)
     except Exception as exc:  # noqa: BLE001 - dependente da API externa
         raise _formatar_erro_metadados(exc, base_id) from exc
 
