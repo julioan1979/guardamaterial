@@ -143,6 +143,33 @@ def _obter_valor_mapeamento(mapeamento: Mapping[str, Any], chave: str) -> Any:
     return _MISSING
 
 
+def _normalizar_valor_celula(valor: Any) -> Optional[str]:
+    """Converte valores de células Airtable para strings simples quando possível."""
+
+    if isinstance(valor, list):
+        if not valor:
+            return ""
+        valor = valor[0]
+
+    if isinstance(valor, Mapping):
+        # Airtable pode devolver objetos com chaves ``name`` ou ``value`` quando o campo
+        # é uma lista de seleção ou ligação a outra tabela.
+        if "name" in valor and isinstance(valor["name"], str):
+            valor = valor["name"]
+        elif "value" in valor and isinstance(valor["value"], str):
+            valor = valor["value"]
+        else:
+            return str(valor)
+
+    if valor is None:
+        return None
+
+    if isinstance(valor, str):
+        return valor.strip()
+
+    return str(valor)
+
+
 def _valor_secreto(chaves: List[str], predefinido: str = "") -> str:
     """Tenta obter um valor de ``st.secrets`` suportando níveis hierárquicos."""
 
@@ -535,13 +562,22 @@ def carregar_inventario(config: AirtableConfig) -> pd.DataFrame:
         dados.append(
             {
                 "id": registo.get("id"),
-                "Artigo": campos.get("Artigo") or campos.get("Nome") or "Sem nome",
-                "Secção": campos.get("Secção") or campos.get("Secao") or campos.get("Section"),
+                "Artigo": _normalizar_valor_celula(
+                    campos.get("Artigo") or campos.get("Nome") or "Sem nome"
+                )
+                or "Sem nome",
+                "Secção": _normalizar_valor_celula(
+                    campos.get("Secção") or campos.get("Secao") or campos.get("Section")
+                ),
                 "Quantidade": campos.get("Quantidade", 0),
                 "Stock Mínimo": campos.get("Stock Mínimo", 0),
-                "Localização": campos.get("Localização") or campos.get("Local"),
-                "Notas": campos.get("Notas", ""),
-                "Atualizado": campos.get("Atualizado em") or campos.get("updated_at"),
+                "Localização": _normalizar_valor_celula(
+                    campos.get("Localização") or campos.get("Local")
+                ),
+                "Notas": _normalizar_valor_celula(campos.get("Notas", "")) or "",
+                "Atualizado": _normalizar_valor_celula(
+                    campos.get("Atualizado em") or campos.get("updated_at")
+                ),
             }
         )
 
@@ -560,6 +596,9 @@ def carregar_inventario(config: AirtableConfig) -> pd.DataFrame:
         )
 
     df = pd.DataFrame(dados)
+    df["Secção"] = df["Secção"].fillna("").astype(str).str.strip()
+    df["Localização"] = df["Localização"].fillna("").astype(str).str.strip()
+    df["Notas"] = df["Notas"].fillna("").astype(str)
     df["Quantidade"] = pd.to_numeric(df["Quantidade"], errors="coerce").fillna(0).astype(int)
     df["Stock Mínimo"] = pd.to_numeric(df["Stock Mínimo"], errors="coerce").fillna(0).astype(int)
     return df
@@ -576,13 +615,13 @@ def carregar_movimentos(config: AirtableConfig) -> pd.DataFrame:
         dados.append(
             {
                 "id": registo.get("id"),
-                "Data": campos.get("Data"),
-                "Artigo": campos.get("Artigo"),
-                "Secção": campos.get("Secção") or campos.get("Secao"),
+                "Data": _normalizar_valor_celula(campos.get("Data")),
+                "Artigo": _normalizar_valor_celula(campos.get("Artigo")),
+                "Secção": _normalizar_valor_celula(campos.get("Secção") or campos.get("Secao")),
                 "Quantidade": campos.get("Quantidade", 0),
-                "Responsável": campos.get("Responsável"),
-                "Tipo": campos.get("Tipo"),
-                "Notas": campos.get("Notas", ""),
+                "Responsável": _normalizar_valor_celula(campos.get("Responsável")),
+                "Tipo": _normalizar_valor_celula(campos.get("Tipo")),
+                "Notas": _normalizar_valor_celula(campos.get("Notas", "")) or "",
             }
         )
 
@@ -601,6 +640,10 @@ def carregar_movimentos(config: AirtableConfig) -> pd.DataFrame:
         )
 
     df = pd.DataFrame(dados)
+    df["Secção"] = df["Secção"].fillna("").astype(str).str.strip()
+    df["Responsável"] = df["Responsável"].fillna("").astype(str).str.strip()
+    df["Notas"] = df["Notas"].fillna("").astype(str)
+    df["Tipo"] = df["Tipo"].fillna("").astype(str)
     df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
     df["Quantidade"] = pd.to_numeric(df["Quantidade"], errors="coerce").fillna(0).astype(int)
     return df
@@ -658,10 +701,23 @@ def interface_resumo(inventario: pd.DataFrame) -> None:
     col3.metric("Artigos em alerta", artigos_em_risco.shape[0])
 
     st.markdown("### Stock por secção")
-    seccoes = obter_seccoes_configuradas()
-    por_seccao = (
-        inventario.groupby("Secção")["Quantidade"].sum().reindex(seccoes, fill_value=0).reset_index()
+    seccoes = [seccao for seccao in obter_seccoes_configuradas() if seccao]
+    totais_por_sec = (
+        inventario.groupby("Secção", dropna=False)["Quantidade"].sum().rename("Quantidade")
     )
+
+    if seccoes:
+        totais_por_sec = totais_por_sec.reindex(seccoes, fill_value=0)
+
+    if totais_por_sec.empty:
+        fallback_sec = seccoes[0] if seccoes else "Sem secção definida"
+        totais_por_sec = pd.Series(
+            [0],
+            index=pd.Index([fallback_sec], name="Secção"),
+            name="Quantidade",
+        )
+
+    por_seccao = totais_por_sec.reset_index()
     st.bar_chart(por_seccao, x="Secção", y="Quantidade")
 
     if not artigos_em_risco.empty:
@@ -783,22 +839,53 @@ def interface_movimentos(config: AirtableConfig, inventario: pd.DataFrame) -> No
         st.info("Crie primeiro artigos no inventário.")
         return
 
+    registo_atual = None
+    artigo_nome: Optional[str] = None
+    submitted = False
+
     with st.form("form_movimento"):
         seccoes_disponiveis = sorted(
             inventario["Secção"].dropna().unique().tolist() or obter_seccoes_configuradas()
         )
         seccao = st.selectbox("Secção", options=seccoes_disponiveis)
         inventario_filtrado = inventario[inventario["Secção"] == seccao]
-        artigo_nome = st.selectbox("Artigo", options=inventario_filtrado["Artigo"].tolist())
-        registo_atual = inventario_filtrado[inventario_filtrado["Artigo"] == artigo_nome].iloc[0]
+        artigos_disponiveis = inventario_filtrado["Artigo"].dropna().tolist()
+
+        if artigos_disponiveis:
+            artigo_nome = st.selectbox("Artigo", options=artigos_disponiveis)
+            registo_atual_df = inventario_filtrado[
+                inventario_filtrado["Artigo"] == artigo_nome
+            ]
+            if not registo_atual_df.empty:
+                registo_atual = registo_atual_df.iloc[0]
+            else:
+                st.error(
+                    "Não foi possível obter os detalhes do artigo selecionado. Atualize a página e tente novamente."
+                )
+        else:
+            st.warning(
+                "Não existem artigos associados a esta secção. Selecione outra secção ou adicione artigos ao inventário."
+            )
+
         tipo = st.selectbox("Tipo de movimento", options=["Entrada", "Saída"])
         quantidade = st.number_input("Quantidade", min_value=1, step=1)
         responsavel = st.text_input("Responsável", placeholder="Nome de quem regista")
         notas = st.text_area("Notas", placeholder="Observações")
         data_movimento = st.date_input("Data", value=datetime.today())
-        submitted = st.form_submit_button("Registar movimento")
 
-    if submitted:
+        submit_kwargs: Dict[str, Any] = {}
+        if not artigos_disponiveis:
+            submit_kwargs["disabled"] = True
+
+        try:
+            submitted = st.form_submit_button("Registar movimento", **submit_kwargs)
+        except TypeError:
+            # Compatibilidade com versões antigas do Streamlit que não suportam ``disabled``.
+            submitted = st.form_submit_button("Registar movimento")
+            if not artigos_disponiveis:
+                submitted = False
+
+    if submitted and artigo_nome and registo_atual is not None:
         delta = int(quantidade) if tipo == "Entrada" else -int(quantidade)
         nova_quantidade = int(registo_atual["Quantidade"]) + delta
         if nova_quantidade < 0:
@@ -826,6 +913,10 @@ def interface_movimentos(config: AirtableConfig, inventario: pd.DataFrame) -> No
             limpar_caches()
         except Exception as exc:  # pragma: no cover - feedback ao utilizador
             st.error(f"Erro ao registar movimento: {exc}")
+    elif submitted:
+        st.error(
+            "Não foi possível registar o movimento porque o artigo selecionado ficou indisponível. Tente novamente."
+        )
 
     movimentos = carregar_movimentos(config)
     if movimentos.empty:
