@@ -15,7 +15,7 @@ except Exception:  # pragma: no cover - executed when Streamlit is not installed
     st = None  # type: ignore
 
 _USERS_TABLE_ENV = "AIRTABLE_USERS_TABLE"
-_DEFAULT_USERS_TABLE = "Utilizadores"
+_DEFAULT_USERS_TABLES = ("Utilizadores", "Users")
 
 
 def _get_secret_value(*keys: str) -> Optional[str]:
@@ -90,14 +90,18 @@ def _get_client() -> AirtableClient:
     return AirtableClient(api_key=api_key, base_id=base_id)
 
 
-def _get_users_table_name() -> str:
-    return (
-        _get_config_value(
-            _USERS_TABLE_ENV,
-            secret_paths=(("airtable", "users_table"),),
-        )
-        or _DEFAULT_USERS_TABLE
+def _get_users_table_config() -> tuple[tuple[str, ...], bool]:
+    """Devolver os nomes de tabela candidatos e indicar se há configuração customizada."""
+
+    configured = _get_config_value(
+        _USERS_TABLE_ENV,
+        secret_paths=(("airtable", "users_table"),),
     )
+    if configured:
+        return (configured,), True
+
+    unique_defaults = tuple(dict.fromkeys(_DEFAULT_USERS_TABLES))
+    return unique_defaults, False
 
 
 def _escape_formula_value(value: str) -> str:
@@ -116,14 +120,38 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
     formula_email = _escape_formula_value(email)
     formula = f"{{Email}} = '{formula_email}'"
 
-    try:
-        records = client.list_records(
-            _get_users_table_name(),
-            formula=formula,
-            max_records=1,
-        )
-    except Exception as exc:  # pragma: no cover - depends on Airtable responses
-        raise RuntimeError(f"Erro ao comunicar com o Airtable: {exc}") from exc
+    table_candidates, is_custom_table = _get_users_table_config()
+    records = None
+    last_exception: Exception | None = None
+
+    for idx, table_name in enumerate(table_candidates):
+        try:
+            candidate_records = client.list_records(
+                table_name,
+                formula=formula,
+                max_records=1,
+            )
+        except Exception as exc:  # pragma: no cover - depende da resposta do Airtable
+            last_exception = exc
+            is_last_candidate = idx == len(table_candidates) - 1
+            if is_custom_table or is_last_candidate:
+                raise RuntimeError(f"Erro ao comunicar com o Airtable: {exc}") from exc
+            continue
+
+        if candidate_records:
+            records = candidate_records
+            break
+
+        if not is_custom_table and idx < len(table_candidates) - 1:
+            continue
+        return None
+
+    if records is None:
+        if last_exception is not None:  # pragma: no cover - dependente do Airtable
+            raise RuntimeError(
+                f"Erro ao comunicar com o Airtable: {last_exception}"
+            ) from last_exception
+        return None
 
     if not records:
         return None
