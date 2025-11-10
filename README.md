@@ -51,6 +51,18 @@ Aplicação em [Streamlit](https://streamlit.io/) para gerir o inventário das d
    ```
 3. Configure o Airtable através do menu lateral e comece a gerir o inventário.
 
+## Verificar a estrutura do Airtable
+Execute a verificação automática para confirmar se a base contém todas as tabelas
+e campos esperados pela aplicação:
+
+```bash
+python scripts/check_airtable_tables.py
+```
+
+O comando apresenta um relatório detalhado das tabelas e colunas. O código de saída
+é `0` quando tudo está conforme e `1` quando são detetadas discrepâncias, permitindo
+a integração em pipelines de CI/CD.
+
 ## Estrutura do repositório
 - `app.py` – código da aplicação Streamlit.
 - `requirements.txt` – dependências Python.
