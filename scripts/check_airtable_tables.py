@@ -15,16 +15,31 @@ from typing import Dict, Iterable
 from pyairtable import Api
 
 
+# Estrutura alinhada com a aplicação Streamlit principal (``app.py``).
 EXPECTED_FIELDS: Dict[str, set[str]] = {
-    "Secções": {"Nome"},
-    "Locais": {"Nome", "Secção"},
-    "Sublocais": {"Nome", "Local"},
-    "Caixas e Armazéns": {"Nome", "Sublocal", "Estado"},
-    "Itens": {"Nome", "Categoria", "Quantidade", "Unidade", "Descrição", "Caixa", "Contenção atual"},
-    "Movimentos": {"Item", "De", "Para", "Data", "Observações"},
-    "Auditorias": {"Caixa", "Data", "Responsável", "Resultado", "Observações", "Foto"},
-    "Inventário": {"Item", "Quantidade", "Caixa"},
-    "Utilizadores": {"Email", "PasswordHash", "Palavra-passe"},
+    "Inventário": {
+        "Artigo",
+        "Secção",
+        "Quantidade",
+        "Stock Mínimo",
+        "Localização",
+        "Notas",
+        "Atualizado em",
+    },
+    "Movimentos": {
+        "Data",
+        "Artigo",
+        "Secção",
+        "Quantidade",
+        "Responsável",
+        "Tipo",
+        "Notas",
+    },
+    "Utilizadores": {
+        "Email",
+        "PasswordHash",
+        "Palavra-passe",
+    },
 }
 
 
