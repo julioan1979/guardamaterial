@@ -134,12 +134,20 @@ def obter_configuracao() -> AirtableConfig:
             api_key=api_key,
             base_id=base_id,
             inventory_table=_ler_valor_config(
-                [["airtable", "inventory_table"], ["AIRTABLE_INVENTORY_TABLE"]],
+                [
+                    ["airtable", "inventory_table"],
+                    ["AIRTABLE_INVENTORY_TABLE"],
+                    ["inventory_table"],
+                ],
                 "AIRTABLE_INVENTORY_TABLE",
                 "Inventário",
             ),
             transactions_table=_ler_valor_config(
-                [["airtable", "transactions_table"], ["AIRTABLE_TRANSACTIONS_TABLE"]],
+                [
+                    ["airtable", "transactions_table"],
+                    ["AIRTABLE_TRANSACTIONS_TABLE"],
+                    ["transactions_table"],
+                ],
                 "AIRTABLE_TRANSACTIONS_TABLE",
                 "Movimentos",
             ),
