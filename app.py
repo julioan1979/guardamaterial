@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -71,6 +71,41 @@ def garantir_autenticacao() -> bool:
     return False
 
 
+@dataclass(frozen=True)
+class TableMetadata:
+    """Representa uma tabela do Airtable e os respetivos campos conhecidos."""
+
+    nome: str
+    campos: Tuple[str, ...] = ()
+
+    @property
+    def campos_ordenados(self) -> List[str]:
+        """Devolve os campos ordenados alfabeticamente."""
+
+        return sorted(self.campos, key=lambda valor: valor.casefold())
+
+
+@dataclass(frozen=True)
+class BaseMetadata:
+    """Metadados simplificados referentes a uma base do Airtable."""
+
+    tabelas: Tuple[TableMetadata, ...] = ()
+
+    @property
+    def nomes_tabelas(self) -> List[str]:
+        """Lista os nomes das tabelas conhecidos."""
+
+        return [tabela.nome for tabela in self.tabelas]
+
+    def obter_tabela(self, nome: str) -> Optional[TableMetadata]:
+        """Procura uma tabela pelos metadados carregados."""
+
+        for tabela in self.tabelas:
+            if tabela.nome == nome:
+                return tabela
+        return None
+
+
 @dataclass
 class AirtableConfig:
     api_key: str
@@ -125,6 +160,67 @@ def _ler_valor_config(chaves_secrets: List[List[str]], env_key: str, fallback: s
     return fallback
 
 
+def _parse_metadata_tables(response: object) -> BaseMetadata:
+    """Converte a resposta da API de metadados num objeto estruturado."""
+
+    tabelas: List[TableMetadata] = []
+    if isinstance(response, dict):
+        tabelas_payload = response.get("tables", [])
+        if isinstance(tabelas_payload, list):
+            for tabela_info in tabelas_payload:
+                if not isinstance(tabela_info, dict):
+                    continue
+                nome = tabela_info.get("name")
+                if not isinstance(nome, str):
+                    continue
+                nome = nome.strip()
+                if not nome:
+                    continue
+                campos_payload = tabela_info.get("fields", [])
+                campos: List[str] = []
+                if isinstance(campos_payload, list):
+                    for campo_info in campos_payload:
+                        if not isinstance(campo_info, dict):
+                            continue
+                        nome_campo = campo_info.get("name")
+                        if not isinstance(nome_campo, str):
+                            continue
+                        nome_campo = nome_campo.strip()
+                        if nome_campo:
+                            campos.append(nome_campo)
+                campos_unicos = tuple(dict.fromkeys(campos))
+                tabelas.append(TableMetadata(nome=nome, campos=campos_unicos))
+    return BaseMetadata(tabelas=tuple(tabelas))
+
+
+def _formatar_erro_metadados(exc: Exception, base_id: str) -> RuntimeError:
+    """Gera uma mensagem de erro amigável ao falhar a leitura de metadados."""
+
+    mensagem = (
+        "Não foi possível obter automaticamente a lista de tabelas do Airtable. "
+        "Confirme se a chave tem o scope 'schema.bases.read' e se a base está acessível."
+    )
+    detalhes = str(exc).strip()
+    if detalhes:
+        mensagem = f"{mensagem} (base: {base_id}). Detalhe técnico: {detalhes}"
+    else:
+        mensagem = f"{mensagem} (base: {base_id})."
+    return RuntimeError(mensagem)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def carregar_metadados_base(api_key: str, base_id: str) -> BaseMetadata:
+    """Obtém os metadados disponíveis da base configurada no Airtable."""
+
+    api = Api(api_key)
+    try:
+        response = api.request("get", f"/meta/bases/{base_id}/tables")
+    except Exception as exc:  # noqa: BLE001 - dependente da API externa
+        raise _formatar_erro_metadados(exc, base_id) from exc
+
+    return _parse_metadata_tables(response)
+
+
 def obter_configuracao() -> AirtableConfig:
     """Obtém a configuração do Airtable usando secrets/variáveis e ajustes no sidebar."""
     api_key, base_id = get_airtable_credentials()
@@ -155,21 +251,41 @@ def obter_configuracao() -> AirtableConfig:
 
     config: AirtableConfig = st.session_state.airtable_config
 
+    metadata: Optional[BaseMetadata] = None
+    metadata_error: Optional[str] = None
+
+    try:
+        metadata = carregar_metadados_base(api_key, base_id)
+    except RuntimeError as exc:
+        metadata_error = str(exc)
+
+    if metadata is not None:
+        st.session_state["_airtable_metadata"] = metadata
+        st.session_state.pop("_airtable_metadata_error", None)
+    elif metadata_error:
+        st.session_state["_airtable_metadata_error"] = metadata_error
+
     with st.sidebar:
         st.header("Configuração do Airtable")
         st.caption(
             "As credenciais são carregadas automaticamente de st.secrets ou variáveis de ambiente."
         )
-        inventory_table = st.text_input(
+        inventory_table = _selecionar_tabela(
             "Tabela de Inventário",
-            value=config.inventory_table,
-            help="Nome da tabela onde estão os artigos",
+            valor_atual=config.inventory_table,
+            metadata=metadata,
+            chave="inventory_table",
+            ajuda="Nome da tabela onde estão os artigos",
         )
-        transactions_table = st.text_input(
+        _mostrar_campos_tabela("Inventário", metadata, inventory_table)
+        transactions_table = _selecionar_tabela(
             "Tabela de Movimentos",
-            value=config.transactions_table,
-            help="Nome da tabela onde ficam registados os movimentos",
+            valor_atual=config.transactions_table,
+            metadata=metadata,
+            chave="transactions_table",
+            ajuda="Nome da tabela onde ficam registados os movimentos",
         )
+        _mostrar_campos_tabela("Movimentos", metadata, transactions_table)
         seccoes_extra_input = st.text_input(
             "Secções adicionais (separadas por vírgula)",
             value=st.session_state.get("seccoes_extra_input", ""),
@@ -180,6 +296,18 @@ def obter_configuracao() -> AirtableConfig:
         seccoes_personalizadas = list(dict.fromkeys(SECCOES_PADRAO + seccoes_extra))
         st.session_state["seccoes_disponiveis"] = seccoes_personalizadas
 
+        if metadata_error:
+            st.warning(metadata_error)
+        elif metadata and metadata.tabelas:
+            with st.expander("Tabelas detectadas no Airtable", expanded=False):
+                for tabela in metadata.tabelas:
+                    st.markdown(f"**{tabela.nome}**")
+                    campos = tabela.campos_ordenados
+                    if campos:
+                        st.caption(", ".join(campos))
+                    else:
+                        st.caption("Sem campos disponíveis na API de metadados.")
+
     st.session_state.airtable_config = AirtableConfig(
         api_key=api_key,
         base_id=base_id,
@@ -187,6 +315,68 @@ def obter_configuracao() -> AirtableConfig:
         transactions_table=transactions_table.strip() or config.transactions_table,
     )
     return st.session_state.airtable_config
+
+
+def _selecionar_tabela(
+    rotulo: str,
+    *,
+    valor_atual: str,
+    metadata: Optional[BaseMetadata],
+    chave: str,
+    ajuda: str,
+) -> str:
+    """Mostra um campo adaptado à informação disponível na API de metadados."""
+
+    if metadata and metadata.tabelas:
+        opcoes = list(dict.fromkeys(metadata.nomes_tabelas))
+        if valor_atual and valor_atual not in opcoes:
+            opcoes.insert(0, valor_atual)
+        opcoes.append("Outro (introduzir manualmente)")
+        indice = opcoes.index(valor_atual) if valor_atual in opcoes else 0
+        escolha = st.selectbox(
+            rotulo,
+            options=opcoes,
+            index=indice,
+            key=f"{chave}_select",
+            help=f"{ajuda}. Selecionado a partir das tabelas visíveis na base.",
+        )
+        if escolha == "Outro (introduzir manualmente)":
+            return st.text_input(
+                f"{rotulo} (manual)",
+                value=valor_atual,
+                key=f"{chave}_manual",
+                help=ajuda,
+            )
+        return escolha
+
+    return st.text_input(
+        rotulo,
+        value=valor_atual,
+        key=f"{chave}_input",
+        help=ajuda,
+    )
+
+
+def _mostrar_campos_tabela(
+    titulo: str,
+    metadata: Optional[BaseMetadata],
+    nome_tabela: str,
+) -> None:
+    """Apresenta os campos conhecidos para uma tabela selecionada."""
+
+    if not metadata or not nome_tabela:
+        return
+
+    tabela_info = metadata.obter_tabela(nome_tabela)
+    if not tabela_info:
+        return
+
+    campos = tabela_info.campos_ordenados
+    if not campos:
+        st.caption(f"Estrutura conhecida para {titulo}: sem campos listados na API.")
+        return
+
+    st.caption(f"Estrutura conhecida para {titulo}: {', '.join(campos)}.")
 
 
 def obter_cliente_airtable(config: AirtableConfig) -> Api:
@@ -545,6 +735,18 @@ def interface_movimentos(config: AirtableConfig, inventario: pd.DataFrame) -> No
 
 
 def interface_documentacao():
+    metadata = st.session_state.get("_airtable_metadata")
+    metadata_error = st.session_state.get("_airtable_metadata_error")
+
+    if isinstance(metadata, BaseMetadata) and metadata.tabelas:
+        st.markdown("### Tabelas detectadas automaticamente")
+        for tabela in metadata.tabelas:
+            campos_lista = tabela.campos_ordenados
+            campos = ", ".join(campos_lista) if campos_lista else "(sem campos listados)"
+            st.markdown(f"- **{tabela.nome}**: {campos}")
+    elif isinstance(metadata_error, str) and metadata_error:
+        st.warning(metadata_error)
+
     with st.expander("Como preparar a base no Airtable", expanded=False):
         st.markdown(
             """
