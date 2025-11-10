@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 import bcrypt
 
-from airtable_client import AirtableClient
+from ..airtable_client import AirtableClient
 
 try:  # pragma: no cover - streamlit may not be available during tests
     import streamlit as st  # type: ignore
