@@ -64,5 +64,54 @@ class ConfigValueTests(unittest.TestCase):
         self.assertEqual(value, "EnvUsers")
 
 
+class AirtableCredentialsTests(unittest.TestCase):
+    """Tests for the ``get_airtable_credentials`` helper."""
+
+    def setUp(self) -> None:
+        self._original_st = auth.st
+        auth.get_airtable_credentials.cache_clear()
+        auth._get_client.cache_clear()
+
+    def tearDown(self) -> None:
+        auth.st = self._original_st
+        auth.get_airtable_credentials.cache_clear()
+        auth._get_client.cache_clear()
+
+    def test_nested_airtable_secrets_are_prioritized(self) -> None:
+        """Nested secrets should be used before top-level keys or environment variables."""
+
+        auth.st = SimpleNamespace(
+            secrets={
+                "airtable": {"api_key": "nested-key", "base_id": "nested-base"},
+                "AIRTABLE_API_KEY": "top-key",
+                "AIRTABLE_BASE_ID": "top-base",
+            }
+        )
+
+        with _EnvVarGuard("AIRTABLE_API_KEY", "AIRTABLE_BASE_ID"):
+            os.environ.pop("AIRTABLE_API_KEY", None)
+            os.environ.pop("AIRTABLE_BASE_ID", None)
+            credentials = auth.get_airtable_credentials()
+
+        self.assertEqual(credentials, ("nested-key", "nested-base"))
+
+    def test_top_level_airtable_secrets_remain_supported(self) -> None:
+        """Top-level secrets continue to be supported when nested ones are absent."""
+
+        auth.st = SimpleNamespace(
+            secrets={
+                "AIRTABLE_API_KEY": "top-key",
+                "AIRTABLE_BASE_ID": "top-base",
+            }
+        )
+
+        with _EnvVarGuard("AIRTABLE_API_KEY", "AIRTABLE_BASE_ID"):
+            os.environ.pop("AIRTABLE_API_KEY", None)
+            os.environ.pop("AIRTABLE_BASE_ID", None)
+            credentials = auth.get_airtable_credentials()
+
+        self.assertEqual(credentials, ("top-key", "top-base"))
+
+
 if __name__ == "__main__":  # pragma: no cover - manual execution
     unittest.main()
