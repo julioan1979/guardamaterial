@@ -1,6 +1,7 @@
 """Utilities for user authentication against the Airtable backend."""
 from __future__ import annotations
 
+import logging
 import os
 from functools import lru_cache
 from typing import Any, Dict, Iterable, Optional, Sequence
@@ -14,8 +15,12 @@ try:  # pragma: no cover - streamlit may not be available during tests
 except Exception:  # pragma: no cover - executed when Streamlit is not installed
     st = None  # type: ignore
 
+logger = logging.getLogger(__name__)
+
 _USERS_TABLE_ENV = "AIRTABLE_USERS_TABLE"
 _DEFAULT_USERS_TABLES = ("Utilizadores", "Users")
+_PLAINTEXT_PASSWORD_FIELD_ENV = "AIRTABLE_PLAINTEXT_PASSWORD_FIELD"
+_DEFAULT_PLAINTEXT_PASSWORD_FIELD = "Palavra-passe"
 
 
 def _get_secret_value(*keys: str) -> Optional[str]:
@@ -102,6 +107,43 @@ def _get_users_table_config() -> tuple[tuple[str, ...], bool]:
 
     unique_defaults = tuple(dict.fromkeys(_DEFAULT_USERS_TABLES))
     return unique_defaults, False
+
+
+@lru_cache(maxsize=1)
+def _get_plaintext_password_field() -> str:
+    """Obter o nome configurado para a coluna de palavra-passe em texto simples."""
+
+    configured = _get_config_value(
+        _PLAINTEXT_PASSWORD_FIELD_ENV,
+        secret_paths=(
+            ("airtable", "plaintext_password_field"),
+            ("airtable", "password_field"),
+        ),
+    )
+    if configured:
+        sanitized = configured.strip()
+        if sanitized:
+            return sanitized
+    return _DEFAULT_PLAINTEXT_PASSWORD_FIELD
+
+
+def _notify_plaintext_password_usage(field_name: str) -> None:
+    """Emitir um aviso sempre que a autenticação recorra a texto simples."""
+
+    message_text = (
+        f"Autenticação baseada na coluna '{field_name}' em texto simples. "
+        "Recomenda-se migrar para o campo PasswordHash (Bcrypt)."
+    )
+
+    if st is not None and hasattr(st, "warning"):
+        try:  # pragma: no cover - depende da implementação do Streamlit
+            st.warning(message_text)  # type: ignore[operator]
+        except Exception:  # pragma: no cover - evitar que um erro silencie o aviso
+            logger.warning(message_text)
+        else:
+            logger.info(message_text)
+    else:
+        logger.warning(message_text)
 
 
 def _escape_formula_value(value: str) -> str:
@@ -192,27 +234,36 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
     record = records[0]
     fields = dict(record.get("fields", {}))
     stored_hash = fields.get("PasswordHash")
-    if not stored_hash:
-        return None
-
-    if isinstance(stored_hash, str):
+    stored_hash_bytes: bytes | None = None
+    if isinstance(stored_hash, str) and stored_hash:
         stored_hash_bytes = stored_hash.encode("utf-8")
-    elif isinstance(stored_hash, bytes):
+    elif isinstance(stored_hash, bytes) and stored_hash:
         stored_hash_bytes = stored_hash
-    else:
-        return None
 
-    password_bytes = password.encode("utf-8")
-    try:
-        is_valid = bcrypt.checkpw(password_bytes, stored_hash_bytes)
-    except ValueError:  # pragma: no cover - invalid hash format
-        return None
+    if stored_hash_bytes is not None:
+        password_bytes = password.encode("utf-8")
+        try:
+            is_valid = bcrypt.checkpw(password_bytes, stored_hash_bytes)
+        except ValueError:  # pragma: no cover - invalid hash format
+            return None
 
-    if not is_valid:
-        return None
+        if not is_valid:
+            return None
 
-    fields.pop("PasswordHash", None)
-    return {"id": record.get("id"), **fields}
+        fields.pop("PasswordHash", None)
+        fields.pop(_get_plaintext_password_field(), None)
+        return {"id": record.get("id"), **fields}
+
+    plaintext_field = _get_plaintext_password_field()
+    plaintext_value = fields.get(plaintext_field)
+    if isinstance(plaintext_value, str) and plaintext_value:
+        if plaintext_value == password:
+            fields.pop("PasswordHash", None)
+            fields.pop(plaintext_field, None)
+            _notify_plaintext_password_usage(plaintext_field)
+            return {"id": record.get("id"), **fields}
+
+    return None
 
 
 __all__ = ["authenticate_user", "get_airtable_credentials"]
