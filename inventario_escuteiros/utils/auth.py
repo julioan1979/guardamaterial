@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Iterable, Optional, Sequence
 
 import bcrypt
 
@@ -109,6 +109,29 @@ def _escape_formula_value(value: str) -> str:
     return value.replace("'", "\\'")
 
 
+def _format_airtable_error(
+    exc: Exception,
+    *,
+    tables_tried: Iterable[str],
+    base_id: str,
+    has_custom_table: bool,
+) -> RuntimeError:
+    """Construir um erro contextualizado para falhas na consulta ao Airtable."""
+
+    tables_list = ", ".join(tables_tried) or "<desconhecido>"
+    hint = (
+        "Defina AIRTABLE_USERS_TABLE ou st.secrets['airtable']['users_table'] com o nome da tabela de utilizadores "
+        "visível na base do Airtable."
+        if not has_custom_table
+        else "Confirme se a tabela configurada existe na base e se o token possui permissões de leitura."
+    )
+    message = (
+        "Erro ao comunicar com o Airtable: "
+        f"{exc} (base: {base_id}; tabelas testadas: {tables_list}). {hint}"
+    )
+    return RuntimeError(message)
+
+
 def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
     """Validate the provided credentials against the Airtable ``Utilizadores`` table."""
     email = (email or "").strip()
@@ -124,7 +147,9 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
     records = None
     last_exception: Exception | None = None
 
+    tried_tables: list[str] = []
     for idx, table_name in enumerate(table_candidates):
+        tried_tables.append(table_name)
         try:
             candidate_records = client.list_records(
                 table_name,
@@ -135,7 +160,12 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
             last_exception = exc
             is_last_candidate = idx == len(table_candidates) - 1
             if is_custom_table or is_last_candidate:
-                raise RuntimeError(f"Erro ao comunicar com o Airtable: {exc}") from exc
+                raise _format_airtable_error(
+                    exc,
+                    tables_tried=tried_tables,
+                    base_id=client.base_id,
+                    has_custom_table=is_custom_table,
+                ) from exc
             continue
 
         if candidate_records:
@@ -148,8 +178,11 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
 
     if records is None:
         if last_exception is not None:  # pragma: no cover - dependente do Airtable
-            raise RuntimeError(
-                f"Erro ao comunicar com o Airtable: {last_exception}"
+            raise _format_airtable_error(
+                last_exception,
+                tables_tried=tried_tables,
+                base_id=client.base_id,
+                has_custom_table=is_custom_table,
             ) from last_exception
         return None
 
