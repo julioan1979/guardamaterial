@@ -5,6 +5,7 @@ Aplicação Streamlit para gestão de inventário das secções de escuteiros.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from collections.abc import Mapping
@@ -229,6 +230,87 @@ def _formatar_erro_metadados(exc: Exception, base_id: str) -> RuntimeError:
     else:
         mensagem = f"{mensagem} (base: {base_id})."
     return RuntimeError(mensagem)
+
+
+def _extrair_tipo_erro(payload: Mapping[str, Any]) -> Optional[str]:
+    """Obtém o identificador de erro de uma resposta do Airtable."""
+
+    tipo = payload.get("type")
+    if isinstance(tipo, str) and tipo.strip():
+        return tipo.strip()
+
+    erro_interno = payload.get("error")
+    if isinstance(erro_interno, Mapping):
+        tipo_interno = erro_interno.get("type")
+        if isinstance(tipo_interno, str) and tipo_interno.strip():
+            return tipo_interno.strip()
+
+    return None
+
+
+def _detalhes_erro_airtable(exc: Exception) -> Tuple[Optional[int], Optional[str], str]:
+    """Extrai dados relevantes de uma exceção devolvida pela API do Airtable."""
+
+    status_code: Optional[int] = None
+    error_type: Optional[str] = None
+    mensagem = str(exc).strip()
+
+    resposta = getattr(exc, "response", None)
+    if resposta is not None:
+        status_code = getattr(resposta, "status_code", None)
+        try:
+            payload = resposta.json()
+        except Exception:  # pragma: no cover - depende do objeto response
+            payload = None
+        if isinstance(payload, Mapping):
+            error_type = _extrair_tipo_erro(payload) or error_type
+
+    error_attr = getattr(exc, "error", None)
+    if isinstance(error_attr, Mapping):
+        error_type = _extrair_tipo_erro(error_attr) or error_type
+
+    if error_type is None and mensagem:
+        correspondencia = re.search(r"[A-Z_]*INVALID[A-Z_]*", mensagem)
+        if correspondencia:
+            error_type = correspondencia.group(0)
+
+    return status_code, error_type, mensagem
+
+
+def _formatar_erro_airtable(exc: Exception, config: AirtableConfig) -> str:
+    """Constrói uma mensagem informativa para erros devolvidos pelo Airtable."""
+
+    status_code, error_type, mensagem = _detalhes_erro_airtable(exc)
+
+    partes: List[str] = [
+        "Não foi possível comunicar com o Airtable. Confirme as credenciais configuradas e tente novamente."
+    ]
+
+    if error_type == "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND":
+        partes.append(
+            "Verifique se o token tem acesso à base configurada "
+            f"('{config.base_id}') e se as tabelas '{config.inventory_table}' e "
+            f"'{config.transactions_table}' existem com estes nomes. "
+            "Pode ajustar os nomes na barra lateral ou através das variáveis "
+            "AIRTABLE_INVENTORY_TABLE e AIRTABLE_TRANSACTIONS_TABLE."
+        )
+    elif status_code == 401:
+        partes.append(
+            "O Airtable devolveu um erro de autenticação (HTTP 401). "
+            "Confirme a chave ou token configurado."
+        )
+    elif status_code == 404:
+        partes.append(
+            "O Airtable não encontrou o recurso solicitado (HTTP 404). "
+            "Confirme o ID da base e os nomes das tabelas definidos na aplicação."
+        )
+
+    if mensagem:
+        partes.append(f"Detalhe técnico: {mensagem}")
+    elif status_code is not None:
+        partes.append(f"Detalhe técnico: HTTP {status_code}")
+
+    return " ".join(parte.strip() for parte in partes if parte.strip())
 
 
 def _build_airtable_metadata_url(api: Api, base_id: str) -> str:
@@ -840,10 +922,7 @@ def main() -> None:
     try:
         inventario = carregar_inventario(config)
     except Exception as exc:  # pragma: no cover - feedback ao utilizador
-        st.error(
-            "Não foi possível comunicar com o Airtable. Verifique os dados configurados e tente novamente. "
-            f"Detalhe técnico: {exc}"
-        )
+        st.error(_formatar_erro_airtable(exc, config))
         interface_documentacao()
         return
 
