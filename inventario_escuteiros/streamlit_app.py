@@ -9,6 +9,7 @@ import streamlit as st
 
 from airtable_client import AirtableClient
 from utils import helpers, layout
+from utils.auth import authenticate_user, get_airtable_credentials
 
 APP_NAME = "Inventário Escuteiros"
 TABLES = [
@@ -33,9 +34,7 @@ st.set_page_config(page_title=APP_NAME, layout="wide")
 
 
 def _get_credentials() -> tuple[str, str]:
-    api_key = st.secrets["AIRTABLE_API_KEY"]
-    base_id = st.secrets["AIRTABLE_BASE_ID"]
-    return api_key, base_id
+    return get_airtable_credentials()
 
 
 @st.cache_resource
@@ -65,12 +64,56 @@ def clear_data_cache() -> None:
     load_table_data.clear()
 
 
+def _ensure_authenticated() -> bool:
+    """Renderiza o formulário de login e valida as credenciais."""
+    user = st.session_state.get("user")
+    if user:
+        return True
+
+    submitted = False
+    email = ""
+    password = ""
+    placeholder = st.empty()
+    with placeholder.container():
+        st.title(APP_NAME)
+        with st.form("login_form"):
+            email = st.text_input("Email")
+            password = st.text_input("Palavra-passe", type="password")
+            submitted = st.form_submit_button("Entrar")
+        if not submitted:
+            st.info("Autentique-se para aceder ao inventário.")
+
+    if submitted:
+        try:
+            user = authenticate_user(email, password)
+        except RuntimeError as exc:
+            st.error(str(exc))
+            return False
+
+        if user:
+            st.session_state["user"] = user
+            placeholder.empty()
+            st.success(f"Bem-vindo, {user.get('Email', 'utilizador')}!")
+            return True
+
+        st.error("Credenciais inválidas. Confirme o email e a palavra-passe.")
+
+    return False
+
+
 def main() -> None:
+    if not _ensure_authenticated():
+        return
+
     api_key, base_id = _get_credentials()
     client = get_client(api_key, base_id)
 
     selected_page = layout.render_sidebar(APP_NAME, PAGE_MODULES)
     layout.render_refresh_button(clear_data_cache)
+
+    user = st.session_state.get("user")
+    if user:
+        st.sidebar.caption(f"Utilizador autenticado: {user.get('Email', 'sem email')}")
 
     dataframes = load_all_data(api_key, base_id)
     last_updated = helpers.latest_timestamp_from_dataframes(dataframes)

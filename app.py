@@ -13,6 +13,8 @@ import pandas as pd
 import streamlit as st
 from pyairtable import Api, Table
 
+from inventario_escuteiros.utils.auth import authenticate_user, get_airtable_credentials
+
 st.set_page_config(
     page_title="Gestão de Stock - Escuteiros",
     page_icon="🎒",
@@ -30,6 +32,43 @@ SECCOES_PADRAO = [
 
 def obter_seccoes_configuradas() -> List[str]:
     return st.session_state.get("seccoes_disponiveis", SECCOES_PADRAO)
+
+
+def garantir_autenticacao() -> bool:
+    """Solicita credenciais ao utilizador e valida-as com o Airtable."""
+    utilizador = st.session_state.get("user")
+    if utilizador:
+        return True
+
+    submitted = False
+    email = ""
+    password = ""
+    placeholder = st.empty()
+    with placeholder.container():
+        st.subheader("Iniciar sessão")
+        with st.form("login_form"):
+            email = st.text_input("Email")
+            password = st.text_input("Palavra-passe", type="password")
+            submitted = st.form_submit_button("Entrar")
+        if not submitted:
+            st.info("Autentique-se para aceder ao inventário do agrupamento.")
+
+    if submitted:
+        try:
+            utilizador = authenticate_user(email, password)
+        except RuntimeError as exc:
+            st.error(str(exc))
+            return False
+
+        if utilizador:
+            st.session_state["user"] = utilizador
+            placeholder.empty()
+            st.success(f"Bem-vindo, {utilizador.get('Email', 'utilizador')}!")
+            return True
+
+        st.error("Credenciais inválidas. Confirme o email e a palavra-passe.")
+
+    return False
 
 
 @dataclass
@@ -87,17 +126,13 @@ def _ler_valor_config(chaves_secrets: List[List[str]], env_key: str, fallback: s
 
 
 def obter_configuracao() -> AirtableConfig:
-    """Lê as credenciais do Airtable a partir do sidebar, secrets ou variáveis de ambiente."""
+    """Obtém a configuração do Airtable usando secrets/variáveis e ajustes no sidebar."""
+    api_key, base_id = get_airtable_credentials()
+
     if "airtable_config" not in st.session_state:
         st.session_state.airtable_config = AirtableConfig(
-            api_key=_ler_valor_config(
-                [["airtable", "api_key"], ["AIRTABLE_API_KEY"]],
-                "AIRTABLE_API_KEY",
-            ),
-            base_id=_ler_valor_config(
-                [["airtable", "base_id"], ["AIRTABLE_BASE_ID"]],
-                "AIRTABLE_BASE_ID",
-            ),
+            api_key=api_key,
+            base_id=base_id,
             inventory_table=_ler_valor_config(
                 [["airtable", "inventory_table"], ["AIRTABLE_INVENTORY_TABLE"]],
                 "AIRTABLE_INVENTORY_TABLE",
@@ -114,16 +149,8 @@ def obter_configuracao() -> AirtableConfig:
 
     with st.sidebar:
         st.header("Configuração do Airtable")
-        api_key = st.text_input(
-            "API Key",
-            value=config.api_key,
-            type="password",
-            help="Crie uma API Key em https://airtable.com/account",
-        )
-        base_id = st.text_input(
-            "Base ID",
-            value=config.base_id,
-            help="Identificador da base (ex.: appXXXXXXXXXXXXXX)",
+        st.caption(
+            "As credenciais são carregadas automaticamente de st.secrets ou variáveis de ambiente."
         )
         inventory_table = st.text_input(
             "Tabela de Inventário",
@@ -134,10 +161,6 @@ def obter_configuracao() -> AirtableConfig:
             "Tabela de Movimentos",
             value=config.transactions_table,
             help="Nome da tabela onde ficam registados os movimentos",
-        )
-        st.caption(
-            "Pode guardar estas variáveis em .streamlit/secrets.toml ou como variáveis de ambiente "
-            "para evitar ter de as introduzir sempre."
         )
         seccoes_extra_input = st.text_input(
             "Secções adicionais (separadas por vírgula)",
@@ -152,8 +175,8 @@ def obter_configuracao() -> AirtableConfig:
     st.session_state.airtable_config = AirtableConfig(
         api_key=api_key,
         base_id=base_id,
-        inventory_table=inventory_table,
-        transactions_table=transactions_table,
+        inventory_table=inventory_table.strip() or config.inventory_table,
+        transactions_table=transactions_table.strip() or config.transactions_table,
     )
     return st.session_state.airtable_config
 
@@ -534,6 +557,9 @@ def interface_documentacao():
               - `Responsável` (Texto)
               - `Tipo` (Texto — "Entrada" ou "Saída")
               - `Notas` (Texto longo)
+            - **Tabela de Utilizadores** (ex.: `Utilizadores`)
+              - `Email` (Texto — um endereço por registo)
+              - `PasswordHash` (Texto — hash Bcrypt da palavra-passe)
 
             > Sugestão: adicione *views* no Airtable para destacar artigos em ruptura ou movimentos recentes.
             """
@@ -542,12 +568,20 @@ def interface_documentacao():
 
 def main() -> None:
     st.title("Gestão de Stock do Agrupamento")
-    config = obter_configuracao()
+    if not garantir_autenticacao():
+        return
+
+    try:
+        config = obter_configuracao()
+    except RuntimeError as exc:
+        st.error(str(exc))
+        interface_documentacao()
+        return
 
     if not config.is_valid:
-        st.warning(
-            "Introduza as credenciais do Airtable no menu lateral para começar. "
-            "Caso ainda não tenha uma base, consulte a documentação abaixo."
+        st.error(
+            "Configuração do Airtable incompleta. Defina as credenciais através de st.secrets "
+            "ou variáveis de ambiente."
         )
         interface_documentacao()
         return
@@ -561,6 +595,10 @@ def main() -> None:
         )
         interface_documentacao()
         return
+
+    utilizador = st.session_state.get("user")
+    if utilizador:
+        st.sidebar.caption(f"Utilizador autenticado: {utilizador.get('Email', 'sem email')}")
 
     tab_inventario, tab_movimentos, tab_resumo, tab_documentacao = st.tabs(
         [
