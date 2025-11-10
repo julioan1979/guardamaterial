@@ -24,6 +24,7 @@ Aplicação em [Streamlit](https://streamlit.io/) para gerir o inventário das d
    AIRTABLE_BASE_ID = "app..."
    AIRTABLE_INVENTORY_TABLE = "Inventário"
    AIRTABLE_TRANSACTIONS_TABLE = "Movimentos"
+   AIRTABLE_USERS_TABLE = "Utilizadores"
    ```
 
    Também é possível utilizar uma secção dedicada:
@@ -34,9 +35,10 @@ Aplicação em [Streamlit](https://streamlit.io/) para gerir o inventário das d
    base_id = "app..."
    inventory_table = "Inventário"
    transactions_table = "Movimentos"
+   users_table = "Utilizadores"
    ```
 
-   A aplicação lê automaticamente estes valores (quer estejam numa secção `[airtable]` ou na raiz do ficheiro/variáveis de ambiente), continuando a permitir a sua edição no menu lateral.
+   A aplicação lê automaticamente estes valores (quer estejam numa secção `[airtable]` ou na raiz do ficheiro/variáveis de ambiente), continuando a permitir a sua edição no menu lateral. Para o módulo de autenticação, o nome da tabela de utilizadores pode ser personalizado através de `AIRTABLE_USERS_TABLE` ou `st.secrets["airtable"]["users_table"]`; na ausência de configuração é utilizado o nome predefinido **"Utilizadores"**.
 
 ## Execução local
 1. Instale as dependências:

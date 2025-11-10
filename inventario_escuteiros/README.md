@@ -30,9 +30,20 @@ Crie o ficheiro `.streamlit/secrets.toml` com as credenciais da API do Airtable:
 ```toml
 AIRTABLE_API_KEY="chave_pessoal"
 AIRTABLE_BASE_ID="id_da_base"
+# Opcional: nome personalizado da tabela de utilizadores
+AIRTABLE_USERS_TABLE="Utilizadores"
 ```
 
 O Streamlit lê automaticamente estes valores através de `st.secrets`.
+
+Também pode organizar as credenciais numa secção `[airtable]`, utilizando chaves como `users_table` para indicar o nome da tabela de autenticação:
+
+```toml
+[airtable]
+api_key="chave_pessoal"
+base_id="id_da_base"
+users_table="Utilizadores"
+```
 
 ## ▶️ Executar localmente
 

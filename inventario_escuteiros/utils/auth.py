@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 import bcrypt
 
@@ -18,13 +18,15 @@ _USERS_TABLE_ENV = "AIRTABLE_USERS_TABLE"
 _DEFAULT_USERS_TABLE = "Utilizadores"
 
 
-def _get_secret_value(key: str) -> Optional[str]:
-    """Return a value from ``st.secrets`` if available."""
+def _get_secret_value(*keys: str) -> Optional[str]:
+    """Return a (possibly nested) value from ``st.secrets`` if available."""
     if st is None:  # Streamlit not available (e.g., running tests)
         return None
 
     try:
-        value = st.secrets[key]
+        value: Any = st.secrets
+        for key in keys:
+            value = value[key]
     except Exception:  # pragma: no cover - depends on runtime configuration
         return None
 
@@ -33,12 +35,25 @@ def _get_secret_value(key: str) -> Optional[str]:
     return None
 
 
-def _get_config_value(key: str) -> Optional[str]:
+def _get_config_value(
+    key: str,
+    *,
+    secret_paths: Optional[Sequence[Sequence[str]]] = None,
+    env_var: Optional[str] = None,
+) -> Optional[str]:
     """Fetch a configuration value from Streamlit secrets or environment variables."""
+
+    paths = secret_paths or ()
+    for path in paths:
+        secret_value = _get_secret_value(*path)
+        if secret_value:
+            return secret_value
+
     secret_value = _get_secret_value(key)
     if secret_value:
         return secret_value
-    env_value = os.getenv(key)
+
+    env_value = os.getenv(env_var or key)
     if env_value:
         return env_value
     return None
@@ -64,7 +79,13 @@ def _get_client() -> AirtableClient:
 
 
 def _get_users_table_name() -> str:
-    return _get_config_value(_USERS_TABLE_ENV) or _DEFAULT_USERS_TABLE
+    return (
+        _get_config_value(
+            _USERS_TABLE_ENV,
+            secret_paths=(("airtable", "users_table"),),
+        )
+        or _DEFAULT_USERS_TABLE
+    )
 
 
 def _escape_formula_value(value: str) -> str:
