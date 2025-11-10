@@ -559,9 +559,14 @@ def interface_documentacao():
               - `Notas` (Texto longo)
             - **Tabela de Utilizadores** (ex.: `Utilizadores`)
               - `Email` (Texto — um endereço por registo)
-              - `PasswordHash` (Texto — hash Bcrypt da palavra-passe)
+              - `PasswordHash` (Texto — hash Bcrypt da palavra-passe, recomendado)
+              - `Palavra-passe` (Texto — suporte temporário para migração; mantenha-o vazio após configurar os hashes)
 
             > Sugestão: adicione *views* no Airtable para destacar artigos em ruptura ou movimentos recentes.
+            > 
+            > Compatibilidade temporária: a aplicação aceita credenciais na coluna `Palavra-passe` para facilitar a migração. 
+            > Gere hashes Bcrypt para cada registo, preencha `PasswordHash` e, depois de confirmar o acesso, apague os valores 
+            > em texto simples.
             """
         )
 

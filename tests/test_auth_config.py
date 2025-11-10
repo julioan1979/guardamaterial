@@ -13,6 +13,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import unittest
 
+import bcrypt
+
 from inventario_escuteiros.utils import auth
 
 
@@ -174,6 +176,96 @@ class AirtableErrorFormattingTests(unittest.TestCase):
         self.assertIn("app123", str(formatted))
         self.assertIn("Utilizadores, Users", str(formatted))
         self.assertIn("AIRTABLE_USERS_TABLE", str(formatted))
+
+
+class _DummyStreamlit:
+    def __init__(self) -> None:
+        self.secrets: dict[str, object] = {}
+        self.warnings: list[str] = []
+
+    def warning(self, message: str) -> None:  # pragma: no cover - simples encaminhamento
+        self.warnings.append(message)
+
+
+class AuthenticateUserTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._original_st = auth.st
+        self._original_get_client = auth._get_client
+        if hasattr(self._original_get_client, "cache_clear"):
+            self._original_get_client.cache_clear()
+        auth._get_plaintext_password_field.cache_clear()
+        self._dummy_st = _DummyStreamlit()
+        auth.st = self._dummy_st
+
+    def tearDown(self) -> None:
+        auth._get_client = self._original_get_client
+        if hasattr(self._original_get_client, "cache_clear"):
+            self._original_get_client.cache_clear()
+        auth._get_plaintext_password_field.cache_clear()
+        auth.st = self._original_st
+
+    def test_authenticate_with_bcrypt_hash(self) -> None:
+        """Um hash Bcrypt válido deve autenticar e limpar campos sensíveis."""
+
+        password = "segredo"
+        stored_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        record = {
+            "id": "rec123",
+            "fields": {
+                "Email": "user@example.com",
+                "PasswordHash": stored_hash,
+                "Perfil": "admin",
+            },
+        }
+
+        class _Client:
+            base_id = "appTest"
+
+            def list_records(self, table_name: str, formula: str, max_records: int) -> list[dict[str, object]]:
+                return [record]
+
+        auth._get_client = lambda: _Client()
+
+        authenticated = auth.authenticate_user("user@example.com", password)
+
+        self.assertIsNotNone(authenticated)
+        assert authenticated is not None
+        self.assertEqual(authenticated.get("id"), "rec123")
+        self.assertEqual(authenticated.get("Email"), "user@example.com")
+        self.assertEqual(authenticated.get("Perfil"), "admin")
+        self.assertNotIn("PasswordHash", authenticated)
+        self.assertEqual(self._dummy_st.warnings, [])
+
+    def test_authenticate_with_plaintext_password(self) -> None:
+        """A coluna 'Palavra-passe' permite autenticar enquanto a migração decorre."""
+
+        record = {
+            "id": "rec321",
+            "fields": {
+                "Email": "compat@example.com",
+                "Palavra-passe": "legado",
+                "Role": "viewer",
+            },
+        }
+
+        class _Client:
+            base_id = "appTest"
+
+            def list_records(self, table_name: str, formula: str, max_records: int) -> list[dict[str, object]]:
+                return [record]
+
+        auth._get_client = lambda: _Client()
+
+        with _EnvVarGuard(auth._PLAINTEXT_PASSWORD_FIELD_ENV):
+            os.environ.pop(auth._PLAINTEXT_PASSWORD_FIELD_ENV, None)
+            auth._get_plaintext_password_field.cache_clear()
+            authenticated = auth.authenticate_user("compat@example.com", "legado")
+
+        self.assertIsNotNone(authenticated)
+        assert authenticated is not None
+        self.assertEqual(authenticated.get("Role"), "viewer")
+        self.assertNotIn("Palavra-passe", authenticated)
+        self.assertGreaterEqual(len(self._dummy_st.warnings), 1)
 
 if __name__ == "__main__":  # pragma: no cover - manual execution
     unittest.main()
