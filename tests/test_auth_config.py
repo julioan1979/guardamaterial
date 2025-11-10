@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from types import SimpleNamespace
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import unittest
 
@@ -150,6 +156,24 @@ class AirtableCredentialsTests(unittest.TestCase):
 
         self.assertEqual(credentials, ("top-key", "top-base"))
 
+
+class AirtableErrorFormattingTests(unittest.TestCase):
+    """Testes para o formatação de erros ao comunicar com o Airtable."""
+
+    def test_error_message_includes_context_and_hint(self) -> None:
+        error = ValueError("INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND")
+
+        formatted = auth._format_airtable_error(
+            error,
+            tables_tried=["Utilizadores", "Users"],
+            base_id="app123",
+            has_custom_table=False,
+        )
+
+        self.assertIsInstance(formatted, RuntimeError)
+        self.assertIn("app123", str(formatted))
+        self.assertIn("Utilizadores, Users", str(formatted))
+        self.assertIn("AIRTABLE_USERS_TABLE", str(formatted))
 
 if __name__ == "__main__":  # pragma: no cover - manual execution
     unittest.main()
