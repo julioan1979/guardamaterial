@@ -62,8 +62,20 @@ def _get_config_value(
 @lru_cache(maxsize=1)
 def get_airtable_credentials() -> tuple[str, str]:
     """Return the Airtable credentials, raising an error when missing."""
-    api_key = _get_config_value("AIRTABLE_API_KEY") or ""
-    base_id = _get_config_value("AIRTABLE_BASE_ID") or ""
+    api_key = (
+        _get_config_value(
+            "AIRTABLE_API_KEY",
+            secret_paths=(("airtable", "api_key"),),
+        )
+        or ""
+    )
+    base_id = (
+        _get_config_value(
+            "AIRTABLE_BASE_ID",
+            secret_paths=(("airtable", "base_id"),),
+        )
+        or ""
+    )
     if not api_key or not base_id:
         raise RuntimeError(
             "Credenciais do Airtable não configuradas. Defina AIRTABLE_API_KEY e AIRTABLE_BASE_ID "
