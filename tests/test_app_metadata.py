@@ -28,6 +28,8 @@ app_module = _load_app_module()
 BaseMetadata = app_module.BaseMetadata
 TableMetadata = app_module.TableMetadata
 _parse_metadata_tables = app_module._parse_metadata_tables
+_build_airtable_metadata_url = app_module._build_airtable_metadata_url
+_request_airtable_metadata = app_module._request_airtable_metadata
 
 
 def test_parse_metadata_tables_extracts_tables_and_fields() -> None:
@@ -111,3 +113,43 @@ def test_valor_secreto_supports_lowercase_top_level_keys() -> None:
         app_module.st = original_st
 
     assert valor == "baseXYZ"
+
+
+def test_build_airtable_metadata_url_uses_api_build_url() -> None:
+    class DummyApi:
+        def __init__(self) -> None:
+            self.called_with: str | None = None
+
+        def build_url(self, path: str) -> str:
+            self.called_with = path
+            return f"https://example.test/{path}"
+
+    api = DummyApi()
+
+    url = _build_airtable_metadata_url(api, "base123")
+
+    assert url == "https://example.test/meta/bases/base123/tables"
+    assert api.called_with == "meta/bases/base123/tables"
+
+
+def test_request_airtable_metadata_invokes_api_request(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class DummyApi:
+        def build_url(self, path: str) -> str:
+            return f"https://example.test/{path}"
+
+        def request(self, method: str, url: str) -> object:
+            captured["method"] = method
+            captured["url"] = url
+            return {"tables": []}
+
+    api = DummyApi()
+
+    response = _request_airtable_metadata(api, "baseXYZ")
+
+    assert response == {"tables": []}
+    assert captured == {
+        "method": "get",
+        "url": "https://example.test/meta/bases/baseXYZ/tables",
+    }

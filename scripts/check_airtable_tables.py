@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Dict, Iterable
+from typing import Any, Dict, Iterable, List
 
 from pyairtable import Api
 
@@ -115,31 +115,67 @@ class AirtableTablesChecker:
         self.expected_fields: Dict[str, set[str]] = {
             table: set(fields) for table, fields in (expected_fields or {}).items()
         }
+        self._metadata_cache: tuple[Dict[str, Any], ...] | None = None
+
+    def fetch_tables_metadata(self) -> List[Dict[str, Any]]:
+        """Consultar a API de metadados e devolver a estrutura bruta das tabelas."""
+
+        if self._metadata_cache is None:
+            api = Api(self.api_key)
+            url = api.build_url(f"meta/bases/{self.base_id}/tables")
+            try:
+                response = api.request("get", url)
+            except Exception as exc:  # noqa: BLE001 - dependente da API externa
+                raise RuntimeError(
+                    "Falha ao comunicar com a API de metadados do Airtable. "
+                    "Confirme o token e os scopes configurados."
+                ) from exc
+
+            raw_tables = response.get("tables", []) if isinstance(response, dict) else []
+            normalised_tables: List[Dict[str, Any]] = []
+            for table in raw_tables:
+                if not isinstance(table, dict):
+                    continue
+                name = table.get("name")
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                fields = table.get("fields", [])
+                if isinstance(fields, list):
+                    filtered_fields = [
+                        field
+                        for field in fields
+                        if isinstance(field, dict)
+                        and isinstance(field.get("name"), str)
+                        and field.get("name", "").strip()
+                    ]
+                else:
+                    filtered_fields = []
+                normalised_tables.append(
+                    {
+                        "name": name.strip(),
+                        "fields": filtered_fields,
+                    }
+                )
+
+            self._metadata_cache = tuple(normalised_tables)
+
+        return [dict(table) for table in self._metadata_cache]
 
     def list_tables(self) -> set[str]:
         """Lê a lista de tabelas disponíveis na base configurada."""
 
-        api = Api(self.api_key)
-        base = api.base(self.base_id)
-        return {table.name for table in base.tables()}
+        return {table["name"] for table in self.fetch_tables_metadata()}
 
     def fetch_table_fields(self) -> Dict[str, set[str]]:
         """Obter os campos configurados em cada tabela via API de metadados."""
 
-        api = Api(self.api_key)
-        response = api.request("get", f"/meta/bases/{self.base_id}/tables")
-        tables_info = response.get("tables", []) if isinstance(response, dict) else []
         fields_by_table: Dict[str, set[str]] = {}
-        for table in tables_info:
-            name = table.get("name")
-            if not isinstance(name, str) or not name:
-                continue
-            table_fields = {
-                field.get("name")
+        for table in self.fetch_tables_metadata():
+            fields_by_table[table["name"]] = {
+                field.get("name", "").strip()
                 for field in table.get("fields", [])
                 if isinstance(field, dict) and isinstance(field.get("name"), str)
             }
-            fields_by_table[name] = {field for field in table_fields if field}
         return fields_by_table
 
     def compare(self) -> TableComparison:
