@@ -7,7 +7,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from collections.abc import Mapping
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -125,18 +126,40 @@ class AirtableConfig:
         )
 
 
+_MISSING = object()
+
+
+def _obter_valor_mapeamento(mapeamento: Mapping[str, Any], chave: str) -> Any:
+    """Obtém um valor de um mapeamento recorrendo a comparação case-insensitive."""
+
+    if chave in mapeamento:
+        return mapeamento[chave]
+
+    chave_normalizada = chave.casefold()
+    for chave_existente in mapeamento:
+        if isinstance(chave_existente, str) and chave_existente.casefold() == chave_normalizada:
+            return mapeamento[chave_existente]
+    return _MISSING
+
+
 def _valor_secreto(chaves: List[str], predefinido: str = "") -> str:
     """Tenta obter um valor de ``st.secrets`` suportando níveis hierárquicos."""
 
     try:
-        segredo_atual = st.secrets  # type: ignore[attr-defined]
+        segredo_atual: Any = st.secrets  # type: ignore[attr-defined]
     except Exception:  # pragma: no cover - comportamento depende do runtime
         return predefinido
 
     for chave in chaves:
-        if isinstance(segredo_atual, dict) and chave in segredo_atual:
-            segredo_atual = segredo_atual[chave]
-        else:
+        if isinstance(segredo_atual, Mapping):
+            segredo_atual = _obter_valor_mapeamento(segredo_atual, chave)
+            if segredo_atual is _MISSING:
+                return predefinido
+            continue
+
+        try:
+            segredo_atual = segredo_atual[chave]  # type: ignore[index]
+        except Exception:  # pragma: no cover - compatibilidade com objectos personalizados
             return predefinido
 
     if isinstance(segredo_atual, (str, int, float)):

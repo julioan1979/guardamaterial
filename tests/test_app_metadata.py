@@ -3,6 +3,7 @@
 from importlib import util
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 
 def _load_app_module():
@@ -86,3 +87,27 @@ def test_base_metadata_obter_tabela_returns_none_for_unknown() -> None:
     metadata = BaseMetadata(tabelas=(TableMetadata(nome="Inventário", campos=("Artigo",)),))
 
     assert metadata.obter_tabela("Inexistente") is None
+
+
+def test_valor_secreto_supports_case_insensitive_lookup() -> None:
+    original_st = app_module.st
+    app_module.st = SimpleNamespace(secrets={"AIRTABLE": {"API_KEY": "Token-123"}})
+
+    try:
+        valor = app_module._valor_secreto(["airtable", "api_key"])
+    finally:
+        app_module.st = original_st
+
+    assert valor == "Token-123"
+
+
+def test_valor_secreto_supports_lowercase_top_level_keys() -> None:
+    original_st = app_module.st
+    app_module.st = SimpleNamespace(secrets={"airtable_base_id": "baseXYZ"})
+
+    try:
+        valor = app_module._valor_secreto(["AIRTABLE_BASE_ID"])
+    finally:
+        app_module.st = original_st
+
+    assert valor == "baseXYZ"
