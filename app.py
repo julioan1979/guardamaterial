@@ -503,6 +503,11 @@ def obter_configuracao() -> AirtableConfig:
             ajuda="Nome da tabela onde estão os artigos",
         )
         _mostrar_campos_tabela("Inventário", metadata, inventory_table)
+        _alertar_tabela_desconhecida(
+            metadata,
+            inventory_table,
+            variavel_env="AIRTABLE_INVENTORY_TABLE",
+        )
         transactions_table = _selecionar_tabela(
             "Tabela de Movimentos",
             valor_atual=config.transactions_table,
@@ -511,6 +516,11 @@ def obter_configuracao() -> AirtableConfig:
             ajuda="Nome da tabela onde ficam registados os movimentos",
         )
         _mostrar_campos_tabela("Movimentos", metadata, transactions_table)
+        _alertar_tabela_desconhecida(
+            metadata,
+            transactions_table,
+            variavel_env="AIRTABLE_TRANSACTIONS_TABLE",
+        )
         seccoes_extra_input = st.text_input(
             "Secções adicionais (separadas por vírgula)",
             value=st.session_state.get("seccoes_extra_input", ""),
@@ -540,6 +550,50 @@ def obter_configuracao() -> AirtableConfig:
         transactions_table=transactions_table.strip() or config.transactions_table,
     )
     return st.session_state.airtable_config
+
+
+def _validar_tabelas_visiveis(
+    metadata: Optional[BaseMetadata], config: AirtableConfig
+) -> bool:
+    """Confirma que as tabelas configuradas existem nos metadados carregados.
+
+    Se a API de metadados estiver disponível, evita chamadas subsequentes às
+    tabelas erradas que resultariam em erros 403/404 por nomes inválidos ou
+    permissões insuficientes.
+    """
+
+    if not metadata or not metadata.tabelas:
+        return True
+
+    tabelas_em_falta = [
+        (config.inventory_table, "AIRTABLE_INVENTORY_TABLE"),
+        (config.transactions_table, "AIRTABLE_TRANSACTIONS_TABLE"),
+    ]
+    tabelas_em_falta = [
+        (nome, variavel)
+        for nome, variavel in tabelas_em_falta
+        if nome.strip() and not metadata.obter_tabela(nome)
+    ]
+
+    if not tabelas_em_falta:
+        return True
+
+    descricoes = [
+        f"'{nome}' (ajuste {variavel} na barra lateral ou via variável de ambiente)"
+        for nome, variavel in tabelas_em_falta
+    ]
+    st.error(
+        "A ligação ao Airtable falhou porque as tabelas configuradas não estão visíveis na base atual. "
+        + " | ".join(descricoes)
+        + ". Selecione um dos nomes listados automaticamente ou confirme as permissões do token."
+    )
+
+    with st.expander("Tabelas detectadas automaticamente", expanded=False):
+        for tabela in metadata.tabelas:
+            campos = ", ".join(tabela.campos_ordenados) or "sem campos listados"
+            st.markdown(f"- **{tabela.nome}** — {campos}")
+
+    return False
 
 
 def _selecionar_tabela(
@@ -602,6 +656,34 @@ def _mostrar_campos_tabela(
         return
 
     st.caption(f"Estrutura conhecida para {titulo}: {', '.join(campos)}.")
+
+
+def _alertar_tabela_desconhecida(
+    metadata: Optional[BaseMetadata],
+    nome_tabela: str,
+    *,
+    variavel_env: str,
+) -> None:
+    """Mostra um aviso quando a tabela configurada não aparece nos metadados.
+
+    Isto ajuda a diagnosticar erros 403/404 relacionados com nomes de tabela
+    incorretos ou permissões insuficientes para a base indicada.
+    """
+
+    if not metadata or not metadata.tabelas or not nome_tabela.strip():
+        return
+
+    if metadata.obter_tabela(nome_tabela):
+        return
+
+    tabelas_conhecidas = ", ".join(metadata.nomes_tabelas) or "nenhuma tabela visível"
+    st.warning(
+        "A tabela configurada não foi encontrada na base atual. "
+        f"'{nome_tabela}' não consta nos metadados carregados ({tabelas_conhecidas}). "
+        f"Confirme o nome no Airtable ou ajuste a variável {variavel_env} na barra lateral "
+        "ou via variáveis de ambiente.",
+        icon="⚠️",
+    )
 
 
 def obter_cliente_airtable(config: AirtableConfig) -> Api:
@@ -1268,6 +1350,11 @@ def main() -> None:
                 "Configuração do Airtable incompleta. Defina as credenciais através de st.secrets "
                 "ou variáveis de ambiente."
             )
+            interface_documentacao()
+            return
+
+        metadata = st.session_state.get("_airtable_metadata")
+        if not _validar_tabelas_visiveis(metadata, config):
             interface_documentacao()
             return
 
