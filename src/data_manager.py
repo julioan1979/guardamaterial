@@ -147,6 +147,17 @@ class DataManager:
             st.error(f"Erro ao atualizar local: {e}")
             return {}
     
+    def delete_location(self, record_id: str) -> bool:
+        """Eliminar local"""
+        try:
+            table = self.get_table(TABLES["LOCATIONS"])
+            table.delete(record_id)
+            self.clear_cache()
+            return True
+        except Exception as e:
+            st.error(f"Erro ao eliminar local: {e}")
+            return False
+    
     # === SECÇÕES ===
     
     def get_sections(self, reload: bool = False) -> pd.DataFrame:
