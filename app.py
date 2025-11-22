@@ -273,11 +273,22 @@ def _parse_metadata_tables(response: object) -> BaseMetadata:
 def _formatar_erro_metadados(exc: Exception, base_id: str) -> RuntimeError:
     """Gera uma mensagem de erro amigável ao falhar a leitura de metadados."""
 
+    status_code, error_type, detalhes_exc = _detalhes_erro_airtable(exc)
+
+    if error_type == "INVALID_PERMISSION_OR_VIEW_NOT_AVAILABLE":
+        mensagem = (
+            "O token configurado não tem permissões para ler a estrutura das tabelas via API de metadados. "
+            "Ative o scope 'schema.bases:read' no token ou ignore este aviso e indique manualmente as tabelas na barra lateral."
+        )
+        sufixo_http = f" (HTTP {status_code})" if status_code else ""
+        detalhes_limpos = f" Detalhe técnico: {detalhes_exc.strip()}" if detalhes_exc.strip() else ""
+        return RuntimeError(f"{mensagem}{sufixo_http}{detalhes_limpos} (base: {base_id}).")
+
     mensagem = (
         "Não foi possível obter automaticamente a lista de tabelas do Airtable. "
         "Confirme se a chave tem o scope 'schema.bases.read' e se a base está acessível."
     )
-    detalhes = str(exc).strip()
+    detalhes = detalhes_exc.strip()
     if detalhes:
         mensagem = f"{mensagem} (base: {base_id}). Detalhe técnico: {detalhes}"
     else:
