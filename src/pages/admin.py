@@ -271,6 +271,36 @@ def render(data_manager: DataManager):
                         st.text(f"{idx}. {option}")
             else:
                 theme.show_info("Nenhuma opção definida")
+            
+            st.markdown("---")
+            
+            # Adicionar nova opção usando typecast
+            st.markdown("### ➕ Adicionar Nova Opção")
+            st.info("💡 **Funcionalidade via typecast**: Cria registro temporário para adicionar a opção automaticamente")
+            
+            with st.form("form_add_option", clear_on_submit=True):
+                new_option = st.text_input(
+                    "Nova Opção *",
+                    placeholder="Digite o nome da nova opção..."
+                )
+                
+                add_btn = st.form_submit_button(
+                    "➕ Adicionar Opção",
+                    use_container_width=True,
+                    type="primary"
+                )
+                
+                if add_btn:
+                    if not new_option or not new_option.strip():
+                        theme.show_error("Por favor, digite uma opção válida!")
+                    else:
+                        with st.spinner("A adicionar opção via typecast..."):
+                            success = add_select_option(selected_table, selected_field, new_option.strip())
+                            
+                            if success:
+                                theme.show_success(f"✅ Opção '{new_option}' adicionada com sucesso!")
+                                st.balloons()
+                                st.rerun()
     
     # === TAB: CONFIGURAÇÕES ===
     with tab_config:

@@ -185,7 +185,9 @@ def get_field_id(table_name: str, field_name: str) -> str:
 
 def add_select_option(table_name: str, field_name: str, new_option: str) -> bool:
     """
-    Adicionar nova opção a um campo Single Select
+    Adicionar nova opção a um campo Single Select usando typecast
+    
+    Estratégia: Criar registro temporário com typecast para forçar criação da opção
     
     Args:
         table_name: Nome da tabela
@@ -197,91 +199,53 @@ def add_select_option(table_name: str, field_name: str, new_option: str) -> bool
     """
     config = get_airtable_config()
     
-    # Limpar cache antes de buscar schema para garantir dados atuais
-    get_airtable_schema.clear()
-    schema = get_airtable_schema()
-    
-    # Encontrar table_id e field_id
-    table_id = None
-    field_id = None
-    current_choices = []
-    
-    for table in schema.get('tables', []):
-        if table['name'] == table_name:
-            table_id = table.get('id')
-            for field in table.get('fields', []):
-                if field.get('name') == field_name:
-                    field_id = field.get('id')
-                    current_choices = field.get('options', {}).get('choices', [])
-                    break
-            break
-    
-    if not table_id or not field_id:
-        st.error(f"Campo {field_name} não encontrado na tabela {table_name}")
-        return False
-    
     # Verificar se opção já existe
-    existing_names = [choice['name'] for choice in current_choices]
-    if new_option in existing_names:
+    current_options = get_options_with_fallback(table_name, field_name)
+    if new_option in current_options:
         st.warning(f"Opção '{new_option}' já existe!")
         return False
-    
-    # Preservar estrutura completa das choices existentes (com IDs e cores)
-    # e adicionar nova opção com cor padrão (Airtable gera o ID automaticamente)
-    new_choices = deepcopy(current_choices)
-    
-    # Determinar cor padrão baseado nas opções existentes
-    default_color = "blueLight2"  # Cor padrão do Airtable
-    if current_choices and 'color' in current_choices[0]:
-        # Usar a mesma cor da primeira opção existente
-        default_color = current_choices[0].get('color', 'blueLight2')
-    
-    new_choices.append({
-        "name": new_option,
-        "color": default_color
-    })
     
     headers = {
         "Authorization": f"Bearer {config['api_key']}",
         "Content-Type": "application/json"
     }
     
-    # Incluir name do campo conforme documentação oficial Airtable
+    # Criar registro temporário com typecast para adicionar a opção
     payload = {
-        "name": field_name,
-        "type": "singleSelect",
-        "options": {
-            "choices": new_choices
-        }
+        "records": [{
+            "fields": {
+                field_name: new_option
+            }
+        }],
+        "typecast": True
     }
     
     try:
-        response = requests.patch(
-            f"https://api.airtable.com/v0/meta/bases/{config['base_id']}/tables/{table_id}/fields/{field_id}",
+        # Criar registro temporário
+        response = requests.post(
+            f"https://api.airtable.com/v0/{config['base_id']}/{table_name}",
             headers=headers,
             json=payload
         )
         response.raise_for_status()
+        
+        # Obter ID do registro criado
+        record_id = response.json()['records'][0]['id']
+        
+        # Deletar registro temporário imediatamente
+        delete_response = requests.delete(
+            f"https://api.airtable.com/v0/{config['base_id']}/{table_name}/{record_id}",
+            headers=headers
+        )
+        delete_response.raise_for_status()
         
         # Limpar cache para forçar reload
         get_airtable_schema.clear()
         
         return True
     except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 422:
-            st.error("""
-            ❌ **Não foi possível adicionar a opção via API**
-            
-            Possíveis causas:
-            - Plano do Airtable sem permissões para Meta API
-            - Campo tem restrições de modificação
-            - Limite de opções atingido
-            
-            **Solução recomendada**: Adicione a opção diretamente no Airtable (instruções acima)
-            """)
-        else:
-            error_msg = f"Erro HTTP {e.response.status_code}: {e.response.text}"
-            st.error(f"Erro ao adicionar opção: {error_msg}")
+        error_msg = f"Erro HTTP {e.response.status_code}: {e.response.text}"
+        st.error(f"Erro ao adicionar opção: {error_msg}")
         return False
     except Exception as e:
         st.error(f"Erro ao adicionar opção: {e}")
