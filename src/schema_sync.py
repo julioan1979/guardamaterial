@@ -246,6 +246,7 @@ def add_select_option(table_name: str, field_name: str, new_option: str) -> bool
     }
     
     payload = {
+        "type": "singleSelect",
         "options": {
             "choices": new_choices
         }
@@ -322,6 +323,7 @@ def remove_select_option(table_name: str, field_name: str, option_to_remove: str
     }
     
     payload = {
+        "type": "singleSelect",
         "options": {
             "choices": new_choices
         }
