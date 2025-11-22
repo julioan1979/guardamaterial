@@ -195,6 +195,9 @@ def add_select_option(table_name: str, field_name: str, new_option: str) -> bool
         True se sucesso, False caso contrário
     """
     config = get_airtable_config()
+    
+    # Limpar cache antes de buscar schema para garantir dados atuais
+    get_airtable_schema.clear()
     schema = get_airtable_schema()
     
     # Encontrar table_id e field_id
@@ -250,6 +253,10 @@ def add_select_option(table_name: str, field_name: str, new_option: str) -> bool
         get_airtable_schema.clear()
         
         return True
+    except requests.exceptions.HTTPError as e:
+        error_msg = f"Erro HTTP {e.response.status_code}: {e.response.text}"
+        st.error(f"Erro ao adicionar opção: {error_msg}")
+        return False
     except Exception as e:
         st.error(f"Erro ao adicionar opção: {e}")
         return False
@@ -268,6 +275,9 @@ def remove_select_option(table_name: str, field_name: str, option_to_remove: str
         True se sucesso, False caso contrário
     """
     config = get_airtable_config()
+    
+    # Limpar cache antes de buscar schema para garantir dados atuais
+    get_airtable_schema.clear()
     schema = get_airtable_schema()
     
     # Encontrar table_id e field_id
@@ -319,6 +329,10 @@ def remove_select_option(table_name: str, field_name: str, option_to_remove: str
         get_airtable_schema.clear()
         
         return True
+    except requests.exceptions.HTTPError as e:
+        error_msg = f"Erro HTTP {e.response.status_code}: {e.response.text}"
+        st.error(f"Erro ao remover opção: {error_msg}")
+        return False
     except Exception as e:
         st.error(f"Erro ao remover opção: {e}")
         return False
