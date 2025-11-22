@@ -8,8 +8,9 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from collections.abc import Mapping
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -22,6 +23,11 @@ st.set_page_config(
     page_icon="🎒",
     layout="wide",
 )
+
+DEMO_FILES = {
+    "inventario": Path(__file__).parent / "Itens-Itens CPP.csv",
+    "movimentos": Path(__file__).parent / "Movimentos-Grid view.csv",
+}
 
 SECCOES_PADRAO = [
     "Alcateia",
@@ -71,6 +77,26 @@ def garantir_autenticacao() -> bool:
         st.error("Credenciais inválidas. Confirme o email e a palavra-passe.")
 
     return False
+
+
+def selecionar_fonte_dados() -> Literal["airtable", "demo_csv"]:
+    """Permite alternar entre dados reais do Airtable e o dataset CSV de demonstração."""
+
+    escolha = st.sidebar.radio(
+        "Fonte de dados",
+        options=(
+            "Airtable (produção)",
+            "Ficheiros CSV de exemplo",
+        ),
+        help=(
+            "Use os ficheiros CSV incluídos no repositório para explorar a interface "
+            "mesmo sem ligação ao Airtable."
+        ),
+    )
+
+    fonte = "demo_csv" if "csv" in escolha.lower() else "airtable"
+    st.session_state["data_source"] = fonte
+    return fonte
 
 
 @dataclass(frozen=True)
@@ -568,6 +594,143 @@ def obter_tabela(config: AirtableConfig, nome_tabela: str) -> Table:
     return cliente.table(config.base_id, nome_tabela)
 
 
+def _ler_csv_demo(caminho: Path) -> pd.DataFrame:
+    """Carrega um CSV local devolvendo um DataFrame vazio em caso de falha."""
+
+    try:
+        return pd.read_csv(caminho)
+    except FileNotFoundError:
+        st.warning(f"Ficheiro de demonstração não encontrado: {caminho}")
+        return pd.DataFrame()
+    except Exception as exc:  # pragma: no cover - feedback apenas em execução Streamlit
+        st.warning(f"Não foi possível ler o ficheiro de demonstração ({caminho}): {exc}")
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def carregar_inventario_demo() -> pd.DataFrame:
+    """Converte o CSV de itens de exemplo para o formato esperado pela aplicação."""
+
+    df = _ler_csv_demo(DEMO_FILES["inventario"])
+    if df.empty:
+        return pd.DataFrame(
+            columns=[
+                "id",
+                "Artigo",
+                "Secção",
+                "Quantidade",
+                "Stock Mínimo",
+                "Localização",
+                "Notas",
+                "Atualizado",
+            ]
+        )
+
+    df = df.rename(
+        columns={
+            "Material": "Artigo",
+            "Secção (from Movimentos)": "Secção",
+            "Local (from Movimentos)": "Localização",
+            "Notas (from Movimentos)": "Notas",
+            "Quantidade Atual": "Quantidade",
+        }
+    )
+
+    df["id"] = df.index.astype(str)
+    df["Artigo"] = df["Artigo"].fillna("").astype(str).str.strip().replace("", "Sem nome")
+    df["Secção"] = df["Secção"].fillna("").astype(str).str.strip()
+    df["Localização"] = df["Localização"].fillna("").astype(str).str.strip()
+    df["Notas"] = df["Notas"].fillna("").astype(str)
+
+    quantidades = (
+        df["Quantidade"].astype(str).str.replace(",", ".", regex=False)
+        if "Quantidade" in df
+        else pd.Series(dtype="float")
+    )
+    df["Quantidade"] = pd.to_numeric(quantidades, errors="coerce").fillna(0).round().astype(int)
+    df["Stock Mínimo"] = 0
+    df["Atualizado"] = "Dados de demonstração"
+
+    return df[
+        [
+            "id",
+            "Artigo",
+            "Secção",
+            "Quantidade",
+            "Stock Mínimo",
+            "Localização",
+            "Notas",
+            "Atualizado",
+        ]
+    ]
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def carregar_movimentos_demo() -> pd.DataFrame:
+    """Normaliza o CSV de movimentos de exemplo para os campos usados na interface."""
+
+    df = _ler_csv_demo(DEMO_FILES["movimentos"])
+    if df.empty:
+        return pd.DataFrame(
+            columns=[
+                "id",
+                "Data",
+                "Artigo",
+                "Secção",
+                "Quantidade",
+                "Responsável",
+                "Tipo",
+                "Notas",
+            ]
+        )
+
+    df = df.rename(
+        columns={
+            "Item": "Artigo",
+            "Responsável": "Responsável",
+        }
+    )
+
+    quantidades = df.get("Quantidade", pd.Series(dtype="float")).astype(str).str.replace(",", ".", regex=False)
+    df["Quantidade"] = pd.to_numeric(quantidades, errors="coerce").fillna(0).round().astype(int)
+    df["Data"] = pd.to_datetime(df.get("Data"), dayfirst=True, errors="coerce")
+    df["Artigo"] = df["Artigo"].fillna("").astype(str).str.strip()
+    df["Secção"] = df.get("Secção", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    df["Responsável"] = df.get("Responsável", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    df["Tipo"] = df.get("Tipo", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    df["Notas"] = df.get("Notas", pd.Series(dtype=str)).fillna("").astype(str)
+    df["id"] = df.get("ID", df.index).astype(str)
+
+    return df[
+        [
+            "id",
+            "Data",
+            "Artigo",
+            "Secção",
+            "Quantidade",
+            "Responsável",
+            "Tipo",
+            "Notas",
+        ]
+    ]
+
+
+def _guardar_metadados_demo(inventario: pd.DataFrame, movimentos: pd.DataFrame) -> None:
+    """Atualiza a sessão com metadados sintetizados a partir dos CSV de exemplo."""
+
+    tabelas: List[TableMetadata] = []
+    if not inventario.empty:
+        tabelas.append(TableMetadata(nome="Inventário (CSV)", campos=tuple(inventario.columns)))
+    if not movimentos.empty:
+        tabelas.append(TableMetadata(nome="Movimentos (CSV)", campos=tuple(movimentos.columns)))
+
+    if tabelas:
+        st.session_state["_airtable_metadata"] = BaseMetadata(tabelas=tuple(tabelas))
+    st.session_state[
+        "_airtable_metadata_error"
+    ] = "A visualizar dados de demonstração carregados de ficheiros CSV locais."
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def carregar_inventario(config: AirtableConfig) -> pd.DataFrame:
     """Obtém todos os artigos do inventário."""
@@ -751,38 +914,47 @@ def interface_resumo(inventario: pd.DataFrame) -> None:
     )
 
 
-def interface_gestao_inventario(config: AirtableConfig, inventario: pd.DataFrame) -> None:
+def interface_gestao_inventario(
+    config: AirtableConfig, inventario: pd.DataFrame, *, modo_leitura: bool = False
+) -> None:
     st.subheader("Gestão de Inventário")
-    with st.expander("Adicionar novo artigo", expanded=False):
-        with st.form("form_novo_artigo"):
-            artigo = st.text_input("Nome do artigo", placeholder="Ex.: Mochila de patrulha")
-            seccao = st.selectbox("Secção", options=obter_seccoes_configuradas())
-            quantidade = st.number_input("Quantidade inicial", min_value=0, step=1)
-            stock_minimo = st.number_input("Stock mínimo", min_value=0, step=1)
-            localizacao = st.text_input("Localização", placeholder="Ex.: Armazém principal")
-            notas = st.text_area("Notas", placeholder="Observações relevantes")
-            submitted = st.form_submit_button("Adicionar")
+    if modo_leitura:
+        st.info(
+            "Modo de demonstração ativo: os dados são carregados de ficheiros CSV e "
+            "as operações de escrita estão desativadas."
+        )
 
-        if submitted:
-            if not artigo.strip():
-                st.error("O nome do artigo é obrigatório.")
-            else:
-                try:
-                    criar_registo_inventario(
-                        config,
-                        {
-                            "Artigo": artigo.strip(),
-                            "Secção": seccao,
-                            "Quantidade": int(quantidade),
-                            "Stock Mínimo": int(stock_minimo),
-                            "Localização": localizacao.strip(),
-                            "Notas": notas.strip(),
-                        },
-                    )
-                    st.success("Artigo adicionado com sucesso!")
-                    limpar_caches()
-                except Exception as exc:  # pragma: no cover - feedback ao utilizador
-                    st.error(f"Erro ao criar o artigo: {exc}")
+    if not modo_leitura:
+        with st.expander("Adicionar novo artigo", expanded=False):
+            with st.form("form_novo_artigo"):
+                artigo = st.text_input("Nome do artigo", placeholder="Ex.: Mochila de patrulha")
+                seccao = st.selectbox("Secção", options=obter_seccoes_configuradas())
+                quantidade = st.number_input("Quantidade inicial", min_value=0, step=1)
+                stock_minimo = st.number_input("Stock mínimo", min_value=0, step=1)
+                localizacao = st.text_input("Localização", placeholder="Ex.: Armazém principal")
+                notas = st.text_area("Notas", placeholder="Observações relevantes")
+                submitted = st.form_submit_button("Adicionar")
+
+            if submitted:
+                if not artigo.strip():
+                    st.error("O nome do artigo é obrigatório.")
+                else:
+                    try:
+                        criar_registo_inventario(
+                            config,
+                            {
+                                "Artigo": artigo.strip(),
+                                "Secção": seccao,
+                                "Quantidade": int(quantidade),
+                                "Stock Mínimo": int(stock_minimo),
+                                "Localização": localizacao.strip(),
+                                "Notas": notas.strip(),
+                            },
+                        )
+                        st.success("Artigo adicionado com sucesso!")
+                        limpar_caches()
+                    except Exception as exc:  # pragma: no cover - feedback ao utilizador
+                        st.error(f"Erro ao criar o artigo: {exc}")
 
     st.markdown("### Artigos existentes")
     if inventario.empty:
@@ -790,6 +962,9 @@ def interface_gestao_inventario(config: AirtableConfig, inventario: pd.DataFrame
         return
 
     st.dataframe(inventario.drop(columns=["id"]).set_index("Artigo"))
+
+    if modo_leitura:
+        return
 
     with st.expander("Atualizar artigo", expanded=False):
         artigos = inventario["Artigo"].tolist()
@@ -851,57 +1026,70 @@ def interface_gestao_inventario(config: AirtableConfig, inventario: pd.DataFrame
                 st.error(f"Não foi possível atualizar o artigo: {exc}")
 
 
-def interface_movimentos(config: AirtableConfig, inventario: pd.DataFrame) -> None:
+def interface_movimentos(
+    config: AirtableConfig,
+    inventario: pd.DataFrame,
+    *,
+    movimentos: Optional[pd.DataFrame] = None,
+    modo_leitura: bool = False,
+) -> None:
     st.subheader("Registo de Movimentos")
     if inventario.empty:
         st.info("Crie primeiro artigos no inventário.")
         return
 
+    if modo_leitura:
+        st.info(
+            "Modo de demonstração ativo: os movimentos listados são apenas para leitura "
+            "e não será possível registar entradas ou saídas."
+        )
+
     registo_atual = None
     artigo_nome: Optional[str] = None
     submitted = False
 
-    with st.form("form_movimento"):
-        seccoes_disponiveis = sorted(
-            inventario["Secção"].dropna().unique().tolist() or obter_seccoes_configuradas()
-        )
-        seccao = st.selectbox("Secção", options=seccoes_disponiveis)
-        inventario_filtrado = inventario[inventario["Secção"] == seccao]
-        artigos_disponiveis = inventario_filtrado["Artigo"].dropna().tolist()
-
-        if artigos_disponiveis:
-            artigo_nome = st.selectbox("Artigo", options=artigos_disponiveis)
-            registo_atual_df = inventario_filtrado[
-                inventario_filtrado["Artigo"] == artigo_nome
-            ]
-            if not registo_atual_df.empty:
-                registo_atual = registo_atual_df.iloc[0]
-            else:
-                st.error(
-                    "Não foi possível obter os detalhes do artigo selecionado. Atualize a página e tente novamente."
-                )
-        else:
-            st.warning(
-                "Não existem artigos associados a esta secção. Selecione outra secção ou adicione artigos ao inventário."
+    if not modo_leitura:
+        with st.form("form_movimento"):
+            seccoes_disponiveis = sorted(
+                inventario["Secção"].dropna().unique().tolist() or obter_seccoes_configuradas()
             )
+            seccao = st.selectbox("Secção", options=seccoes_disponiveis)
+            inventario_filtrado = inventario[inventario["Secção"] == seccao]
+            artigos_disponiveis = inventario_filtrado["Artigo"].dropna().tolist()
 
-        tipo = st.selectbox("Tipo de movimento", options=["Entrada", "Saída"])
-        quantidade = st.number_input("Quantidade", min_value=1, step=1)
-        responsavel = st.text_input("Responsável", placeholder="Nome de quem regista")
-        notas = st.text_area("Notas", placeholder="Observações")
-        data_movimento = st.date_input("Data", value=datetime.today())
+            if artigos_disponiveis:
+                artigo_nome = st.selectbox("Artigo", options=artigos_disponiveis)
+                registo_atual_df = inventario_filtrado[
+                    inventario_filtrado["Artigo"] == artigo_nome
+                ]
+                if not registo_atual_df.empty:
+                    registo_atual = registo_atual_df.iloc[0]
+                else:
+                    st.error(
+                        "Não foi possível obter os detalhes do artigo selecionado. Atualize a página e tente novamente."
+                    )
+            else:
+                st.warning(
+                    "Não existem artigos associados a esta secção. Selecione outra secção ou adicione artigos ao inventário."
+                )
 
-        submit_kwargs: Dict[str, Any] = {}
-        if not artigos_disponiveis:
-            submit_kwargs["disabled"] = True
+            tipo = st.selectbox("Tipo de movimento", options=["Entrada", "Saída"])
+            quantidade = st.number_input("Quantidade", min_value=1, step=1)
+            responsavel = st.text_input("Responsável", placeholder="Nome de quem regista")
+            notas = st.text_area("Notas", placeholder="Observações")
+            data_movimento = st.date_input("Data", value=datetime.today())
 
-        try:
-            submitted = st.form_submit_button("Registar movimento", **submit_kwargs)
-        except TypeError:
-            # Compatibilidade com versões antigas do Streamlit que não suportam ``disabled``.
-            submitted = st.form_submit_button("Registar movimento")
+            submit_kwargs: Dict[str, Any] = {}
             if not artigos_disponiveis:
-                submitted = False
+                submit_kwargs["disabled"] = True
+
+            try:
+                submitted = st.form_submit_button("Registar movimento", **submit_kwargs)
+            except TypeError:
+                # Compatibilidade com versões antigas do Streamlit que não suportam ``disabled``.
+                submitted = st.form_submit_button("Registar movimento")
+                if not artigos_disponiveis:
+                    submitted = False
 
     if submitted and artigo_nome and registo_atual is not None:
         delta = int(quantidade) if tipo == "Entrada" else -int(quantidade)
@@ -936,7 +1124,7 @@ def interface_movimentos(config: AirtableConfig, inventario: pd.DataFrame) -> No
             "Não foi possível registar o movimento porque o artigo selecionado ficou indisponível. Tente novamente."
         )
 
-    movimentos = carregar_movimentos(config)
+    movimentos = movimentos if movimentos is not None else carregar_movimentos(config)
     if movimentos.empty:
         st.info("Ainda sem movimentos registados.")
     else:
@@ -1016,32 +1204,49 @@ def main() -> None:
     if not garantir_autenticacao():
         return
 
-    try:
-        config = obter_configuracao()
-    except RuntimeError as exc:
-        st.error(str(exc))
-        interface_documentacao()
-        return
+    fonte_dados = selecionar_fonte_dados()
 
-    if not config.is_valid:
-        st.error(
-            "Configuração do Airtable incompleta. Defina as credenciais através de st.secrets "
-            "ou variáveis de ambiente."
+    inventario: pd.DataFrame
+    movimentos: pd.DataFrame
+    config: AirtableConfig
+
+    if fonte_dados == "demo_csv":
+        inventario = carregar_inventario_demo()
+        movimentos = carregar_movimentos_demo()
+        config = AirtableConfig(api_key="", base_id="", inventory_table="Inventário", transactions_table="Movimentos")
+        _guardar_metadados_demo(inventario, movimentos)
+        st.sidebar.info(
+            "A mostrar os dados de demonstração exportados do Airtable (ficheiros CSV locais)."
         )
-        interface_documentacao()
-        return
+    else:
+        try:
+            config = obter_configuracao()
+        except RuntimeError as exc:
+            st.error(str(exc))
+            interface_documentacao()
+            return
 
-    try:
-        inventario = carregar_inventario(config)
-    except Exception as exc:  # pragma: no cover - feedback ao utilizador
-        st.error(_formatar_erro_airtable(exc, config))
-        interface_documentacao()
-        return
+        if not config.is_valid:
+            st.error(
+                "Configuração do Airtable incompleta. Defina as credenciais através de st.secrets "
+                "ou variáveis de ambiente."
+            )
+            interface_documentacao()
+            return
+
+        try:
+            inventario = carregar_inventario(config)
+            movimentos = carregar_movimentos(config)
+        except Exception as exc:  # pragma: no cover - feedback ao utilizador
+            st.error(_formatar_erro_airtable(exc, config))
+            interface_documentacao()
+            return
 
     utilizador = st.session_state.get("user")
     if utilizador:
         st.sidebar.caption(f"Utilizador autenticado: {utilizador.get('Email', 'sem email')}")
 
+    modo_demo = fonte_dados == "demo_csv"
     tab_inventario, tab_movimentos, tab_resumo, tab_documentacao = st.tabs(
         [
             "Inventário",
@@ -1052,10 +1257,15 @@ def main() -> None:
     )
 
     with tab_inventario:
-        interface_gestao_inventario(config, inventario)
+        interface_gestao_inventario(config, inventario, modo_leitura=modo_demo)
 
     with tab_movimentos:
-        interface_movimentos(config, inventario)
+        interface_movimentos(
+            config,
+            inventario,
+            movimentos=movimentos,
+            modo_leitura=modo_demo,
+        )
 
     with tab_resumo:
         interface_resumo(inventario)
