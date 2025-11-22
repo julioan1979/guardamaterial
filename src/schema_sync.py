@@ -222,8 +222,10 @@ def add_select_option(table_name: str, field_name: str, new_option: str) -> bool
         st.warning(f"Opção '{new_option}' já existe!")
         return False
     
-    # Adicionar nova opção à lista
-    new_choices = current_choices + [{"name": new_option}]
+    # Preservar estrutura completa das choices existentes (com IDs)
+    # e adicionar nova opção sem ID (Airtable gera automaticamente)
+    new_choices = current_choices.copy()
+    new_choices.append({"name": new_option})
     
     headers = {
         "Authorization": f"Bearer {config['api_key']}",
