@@ -248,6 +248,9 @@ def render(data_manager: DataManager):
                     
                     st.markdown("---")
                     
+                    # Checkbox de confirmação para eliminação
+                    confirm_delete = st.checkbox("⚠️ Confirmo que desejo eliminar este item")
+                    
                     col_btn1, col_btn2 = st.columns(2)
                     
                     with col_btn1:
@@ -282,8 +285,9 @@ def render(data_manager: DataManager):
                                 theme.show_error("Erro ao atualizar item")
                     
                     if delete_btn:
-                        st.warning("⚠️ Tem a certeza que deseja eliminar este item?")
-                        if st.checkbox("Sim, confirmo a eliminação"):
+                        if not confirm_delete:
+                            theme.show_warning("⚠️ Por favor, confirme a eliminação marcando a caixa acima")
+                        else:
                             with st.spinner("A eliminar..."):
                                 success = data_manager.delete_item(selected_item_id)
                                 
