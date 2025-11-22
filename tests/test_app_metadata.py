@@ -31,6 +31,7 @@ AirtableConfig = app_module.AirtableConfig
 _parse_metadata_tables = app_module._parse_metadata_tables
 _build_airtable_metadata_url = app_module._build_airtable_metadata_url
 _request_airtable_metadata = app_module._request_airtable_metadata
+_formatar_erro_metadados = app_module._formatar_erro_metadados
 _formatar_erro_airtable = app_module._formatar_erro_airtable
 
 
@@ -171,6 +172,27 @@ class _DummyAirtableException(Exception):
         super().__init__(message)
         self.response = response
         self.error = error
+
+
+def test_formatar_erro_metadados_refere_scope_quando_sem_permissoes() -> None:
+    exc = _DummyAirtableException(
+        "Live Table Metadata: Missing access",
+        response=_DummyResponse(
+            403,
+            {
+                "error": {
+                    "type": "INVALID_PERMISSION_OR_VIEW_NOT_AVAILABLE",
+                    "message": "missing_required_permission: schema",  # exemplo similar ao Airtable
+                }
+            },
+        ),
+    )
+
+    mensagem = str(_formatar_erro_metadados(exc, "baseXYZ"))
+
+    assert "não tem permissões" in mensagem
+    assert "schema.bases:read" in mensagem
+    assert "baseXYZ" in mensagem
 
 
 def test_formatar_erro_airtable_inclui_dica_para_tabelas() -> None:
