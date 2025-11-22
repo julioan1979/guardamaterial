@@ -251,12 +251,6 @@ def add_select_option(table_name: str, field_name: str, new_option: str) -> bool
         }
     }
     
-    # Debug: mostrar o que será enviado
-    import json
-    st.info(f"🔍 Debug - Enviando {len(new_choices)} opções para o Airtable")
-    with st.expander("Ver payload completo"):
-        st.json(payload)
-    
     try:
         response = requests.patch(
             f"https://api.airtable.com/v0/meta/bases/{config['base_id']}/tables/{table_id}/fields/{field_id}",

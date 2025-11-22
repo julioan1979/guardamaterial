@@ -207,7 +207,23 @@ def render(data_manager: DataManager):
     # === TAB: OPÇÕES DE CAMPOS ===
     with tab_options:
         st.subheader("🏷️ Gestão de Opções de Campos")
-        st.markdown("Adicionar ou remover opções dos campos Single Select")
+        
+        st.warning("""
+        ⚠️ **Limitação do Airtable Meta API**: A API pode bloquear modificações em campos Single Select 
+        quando há registos a utilizá-los. 
+        
+        **Solução alternativa recomendada:**
+        1. Aceda ao [Airtable](https://airtable.com) diretamente
+        2. Abra a base do Inventário
+        3. Clique no nome do campo (ex: "Contenção", "Local", "Orientação")
+        4. Selecione "Edit field"
+        5. Adicione novas opções manualmente
+        6. As opções aparecem automaticamente na aplicação (cache de 1 hora)
+        """)
+        
+        st.markdown("---")
+        st.markdown("### 🔍 Visualizar Opções Atuais")
+        st.markdown("Consulte as opções disponíveis em cada campo:")
         
         # Selecionar tabela e campo
         col1, col2 = st.columns(2)
@@ -257,6 +273,11 @@ def render(data_manager: DataManager):
                 theme.show_info("Nenhuma opção definida")
             
             st.markdown("---")
+            
+            st.info("""
+            💡 **Modo Experimental**: Tente adicionar/remover opções abaixo. 
+            Se não funcionar devido às limitações do Airtable, use o método manual descrito acima.
+            """)
             
             # Adicionar nova opção
             col_add, col_remove = st.columns(2)
