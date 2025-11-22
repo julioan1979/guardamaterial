@@ -82,12 +82,26 @@ def garantir_autenticacao() -> bool:
 def selecionar_fonte_dados() -> Literal["airtable", "demo_csv"]:
     """Permite alternar entre dados reais do Airtable e o dataset CSV de demonstração."""
 
+    def _credenciais_airtable_configuradas() -> bool:
+        """Verifica se existem credenciais Airtable definidas antes de ativar a opção."""
+
+        try:
+            api_key, base_id = get_airtable_credentials()
+        except RuntimeError:
+            return False
+
+        return bool(api_key.strip()) and bool(base_id.strip())
+
+    credenciais_disponiveis = _credenciais_airtable_configuradas()
+    indice_predefinido = 0 if credenciais_disponiveis else 1
+
     escolha = st.sidebar.radio(
         "Fonte de dados",
         options=(
             "Airtable (produção)",
             "Ficheiros CSV de exemplo",
         ),
+        index=indice_predefinido,
         help=(
             "Use os ficheiros CSV incluídos no repositório para explorar a interface "
             "mesmo sem ligação ao Airtable."
@@ -96,6 +110,14 @@ def selecionar_fonte_dados() -> Literal["airtable", "demo_csv"]:
 
     fonte = "demo_csv" if "csv" in escolha.lower() else "airtable"
     st.session_state["data_source"] = fonte
+
+    if fonte == "airtable" and not credenciais_disponiveis:
+        st.sidebar.info(
+            "Credenciais do Airtable em falta. Defina AIRTABLE_API_KEY e AIRTABLE_BASE_ID "
+            "em st.secrets ou variáveis de ambiente para ativar a ligação. Enquanto "
+            "isso não acontece, utilize os ficheiros CSV de exemplo."
+        )
+
     return fonte
 
 
@@ -1234,6 +1256,10 @@ def main() -> None:
             config = obter_configuracao()
         except RuntimeError as exc:
             st.error(str(exc))
+            st.info(
+                "Se preferir testar a interface sem credenciais, selecione 'Ficheiros CSV de "
+                "exemplo' na barra lateral."
+            )
             interface_documentacao()
             return
 
