@@ -552,6 +552,50 @@ def obter_configuracao() -> AirtableConfig:
     return st.session_state.airtable_config
 
 
+def _validar_tabelas_visiveis(
+    metadata: Optional[BaseMetadata], config: AirtableConfig
+) -> bool:
+    """Confirma que as tabelas configuradas existem nos metadados carregados.
+
+    Se a API de metadados estiver disponível, evita chamadas subsequentes às
+    tabelas erradas que resultariam em erros 403/404 por nomes inválidos ou
+    permissões insuficientes.
+    """
+
+    if not metadata or not metadata.tabelas:
+        return True
+
+    tabelas_em_falta = [
+        (config.inventory_table, "AIRTABLE_INVENTORY_TABLE"),
+        (config.transactions_table, "AIRTABLE_TRANSACTIONS_TABLE"),
+    ]
+    tabelas_em_falta = [
+        (nome, variavel)
+        for nome, variavel in tabelas_em_falta
+        if nome.strip() and not metadata.obter_tabela(nome)
+    ]
+
+    if not tabelas_em_falta:
+        return True
+
+    descricoes = [
+        f"'{nome}' (ajuste {variavel} na barra lateral ou via variável de ambiente)"
+        for nome, variavel in tabelas_em_falta
+    ]
+    st.error(
+        "A ligação ao Airtable falhou porque as tabelas configuradas não estão visíveis na base atual. "
+        + " | ".join(descricoes)
+        + ". Selecione um dos nomes listados automaticamente ou confirme as permissões do token."
+    )
+
+    with st.expander("Tabelas detectadas automaticamente", expanded=False):
+        for tabela in metadata.tabelas:
+            campos = ", ".join(tabela.campos_ordenados) or "sem campos listados"
+            st.markdown(f"- **{tabela.nome}** — {campos}")
+
+    return False
+
+
 def _selecionar_tabela(
     rotulo: str,
     *,
@@ -1306,6 +1350,11 @@ def main() -> None:
                 "Configuração do Airtable incompleta. Defina as credenciais através de st.secrets "
                 "ou variáveis de ambiente."
             )
+            interface_documentacao()
+            return
+
+        metadata = st.session_state.get("_airtable_metadata")
+        if not _validar_tabelas_visiveis(metadata, config):
             interface_documentacao()
             return
 
