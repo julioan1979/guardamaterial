@@ -3,21 +3,75 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from typing import Any, Dict, Optional
 
 import requests
+import streamlit as st
 
 API_BASE_URL = "https://api.airtable.com/v0"
 
 
-def _obter_credenciais() -> Dict[str, str]:
-    """Obtém as credenciais do Airtable a partir de variáveis de ambiente."""
+def _obter_valor_mapeamento(mapeamento: Mapping[str, Any], chave: str) -> Any:
+    """Lê uma chave de forma case-insensitive a partir de um mapeamento."""
 
-    api_key = os.getenv("AIRTABLE_API_KEY")
-    base_id = os.getenv("AIRTABLE_BASE_ID")
+    try:
+        if chave in mapeamento:
+            return mapeamento[chave]
+    except Exception:  # pragma: no cover - depende da implementação de secrets
+        return None
+
+    chave_normalizada = chave.casefold()
+    for chave_existente in mapeamento:
+        if isinstance(chave_existente, str) and chave_existente.casefold() == chave_normalizada:
+            return mapeamento[chave_existente]
+    return None
+
+
+def _valor_secreto(caminho: list[str]) -> str:
+    """Tenta obter um valor do ``st.secrets`` percorrendo o caminho indicado."""
+
+    try:
+        segredo_atual: Any = st.secrets  # type: ignore[attr-defined]
+    except Exception:  # pragma: no cover - depende do runtime
+        return ""
+
+    for chave in caminho:
+        if isinstance(segredo_atual, Mapping):
+            segredo_atual = _obter_valor_mapeamento(segredo_atual, chave)
+            if segredo_atual is None:
+                return ""
+            continue
+
+        try:
+            segredo_atual = segredo_atual[chave]  # type: ignore[index]
+        except Exception:  # pragma: no cover - compatibilidade com objectos personalizados
+            return ""
+
+    if isinstance(segredo_atual, (str, int, float)):
+        return str(segredo_atual)
+    return ""
+
+
+def _ler_credencial(chaves_secrets: list[list[str]], env_key: str) -> str:
+    """Obtém uma credencial a partir de ``st.secrets`` ou variáveis de ambiente."""
+
+    for caminho in chaves_secrets:
+        valor = _valor_secreto(caminho)
+        if valor:
+            return valor
+
+    return os.getenv(env_key, "")
+
+
+def _obter_credenciais() -> Dict[str, str]:
+    """Obtém as credenciais do Airtable a partir de secrets ou variáveis de ambiente."""
+
+    api_key = _ler_credencial([["AIRTABLE_API_KEY"], ["airtable", "api_key"], ["api_key"]], "AIRTABLE_API_KEY")
+    base_id = _ler_credencial([["AIRTABLE_BASE_ID"], ["airtable", "base_id"], ["base_id"]], "AIRTABLE_BASE_ID")
     if not api_key or not base_id:
         raise EnvironmentError(
-            "As variáveis de ambiente AIRTABLE_API_KEY e AIRTABLE_BASE_ID devem estar definidas."
+            "Defina AIRTABLE_API_KEY e AIRTABLE_BASE_ID em st.secrets ou como variáveis de ambiente."
         )
     return {"api_key": api_key, "base_id": base_id}
 

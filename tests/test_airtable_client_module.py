@@ -41,6 +41,19 @@ def test_obter_credenciais_do_ambiente(monkeypatch: pytest.MonkeyPatch) -> None:
     assert airtable_client.obter_credenciais_do_ambiente() == ("key123", "base123")
 
 
+def test_obter_credenciais_do_ambiente_com_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(airtable_client.ENV_API_KEY, raising=False)
+    monkeypatch.delenv(airtable_client.ENV_BASE_ID, raising=False)
+    monkeypatch.setattr(
+        airtable_client.st,
+        "secrets",
+        {"AIRTABLE_API_KEY": "secret_key", "AIRTABLE_BASE_ID": "secret_base"},
+        raising=False,
+    )
+
+    assert airtable_client.obter_credenciais_do_ambiente() == ("secret_key", "secret_base")
+
+
 def test_obter_credenciais_do_ambiente_erro(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(airtable_client.ENV_API_KEY, raising=False)
     monkeypatch.delenv(airtable_client.ENV_BASE_ID, raising=False)

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import streamlit as st
 from pyairtable import Api, Table
 
 ENV_API_KEY = "AIRTABLE_API_KEY"
@@ -51,20 +53,70 @@ class AirtableClient:
         return table.delete(record_id)
 
 
-def obter_credenciais_do_ambiente() -> Tuple[str, str]:
-    """Lê as credenciais do Airtable definidas nas variáveis de ambiente."""
+def _obter_valor_mapeamento(mapeamento: Mapping[str, Any], chave: str) -> Any:
+    """Obtém valores de um mapeamento considerando comparações case-insensitive."""
 
-    api_key = os.getenv(ENV_API_KEY)
-    base_id = os.getenv(ENV_BASE_ID)
-    missing = [
-        nome
-        for nome, valor in ((ENV_API_KEY, api_key), (ENV_BASE_ID, base_id))
-        if not valor
-    ]
+    try:
+        if chave in mapeamento:
+            return mapeamento[chave]
+    except Exception:  # pragma: no cover - depende da origem do mapeamento
+        return None
+
+    chave_normalizada = chave.casefold()
+    for chave_existente in mapeamento:
+        if isinstance(chave_existente, str) and chave_existente.casefold() == chave_normalizada:
+            return mapeamento[chave_existente]
+    return None
+
+
+def _valor_secreto(caminho: Tuple[str, ...]) -> str:
+    """Tenta ler um valor de ``st.secrets`` seguindo o caminho fornecido."""
+
+    try:
+        segredo_atual: Any = st.secrets  # type: ignore[attr-defined]
+    except Exception:  # pragma: no cover - dependente do runtime Streamlit
+        return ""
+
+    for chave in caminho:
+        if isinstance(segredo_atual, Mapping):
+            segredo_atual = _obter_valor_mapeamento(segredo_atual, chave)
+            if segredo_atual is None:
+                return ""
+            continue
+
+        try:
+            segredo_atual = segredo_atual[chave]  # type: ignore[index]
+        except Exception:  # pragma: no cover - compatibilidade com objectos secrets customizados
+            return ""
+
+    if isinstance(segredo_atual, (str, int, float)):
+        return str(segredo_atual)
+    return ""
+
+
+def _ler_credencial(*caminhos: Tuple[str, ...]) -> str:
+    """Procura uma credencial nos secrets ou nas variáveis de ambiente."""
+
+    for caminho in caminhos:
+        valor = _valor_secreto(caminho)
+        if valor:
+            return valor
+
+    if caminhos:
+        env_key = caminhos[0][-1]
+        return os.getenv(env_key, "")
+    return ""
+
+
+def obter_credenciais_do_ambiente() -> Tuple[str, str]:
+    """Lê as credenciais do Airtable definidas em st.secrets ou no ambiente."""
+
+    api_key = _ler_credencial((ENV_API_KEY,), ("airtable", "api_key"), ("api_key",))
+    base_id = _ler_credencial((ENV_BASE_ID,), ("airtable", "base_id"), ("base_id",))
+    missing = [nome for nome, valor in ((ENV_API_KEY, api_key), (ENV_BASE_ID, base_id)) if not valor]
     if missing:
         raise RuntimeError(
-            "Variáveis de ambiente em falta para comunicar com o Airtable: "
-            + ", ".join(missing)
+            "Credenciais do Airtable em falta: " + ", ".join(missing)
         )
     return api_key or "", base_id or ""
 
