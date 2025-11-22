@@ -225,10 +225,20 @@ def add_select_option(table_name: str, field_name: str, new_option: str) -> bool
         st.warning(f"Opção '{new_option}' já existe!")
         return False
     
-    # Preservar estrutura completa das choices existentes (com IDs)
-    # e adicionar nova opção sem ID (Airtable gera automaticamente)
+    # Preservar estrutura completa das choices existentes (com IDs e cores)
+    # e adicionar nova opção com cor padrão (Airtable gera o ID automaticamente)
     new_choices = current_choices.copy()
-    new_choices.append({"name": new_option})
+    
+    # Determinar cor padrão baseado nas opções existentes
+    default_color = "blueLight2"  # Cor padrão do Airtable
+    if current_choices and 'color' in current_choices[0]:
+        # Usar a mesma cor da primeira opção existente
+        default_color = current_choices[0].get('color', 'blueLight2')
+    
+    new_choices.append({
+        "name": new_option,
+        "color": default_color
+    })
     
     headers = {
         "Authorization": f"Bearer {config['api_key']}",
