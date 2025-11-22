@@ -365,3 +365,4 @@ def remove_select_option(table_name: str, field_name: str, option_to_remove: str
     except Exception as e:
         st.error(f"Erro ao remover opção: {e}")
         return False
+# Force update Sat Nov 22 16:21:32 UTC 2025
