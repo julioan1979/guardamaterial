@@ -158,3 +158,165 @@ def get_options_with_fallback(table_name: str, field_name: str) -> List[str]:
     
     # Fallback
     return FALLBACK_OPTIONS.get(table_name, {}).get(field_name, [])
+
+
+def get_field_id(table_name: str, field_name: str) -> str:
+    """
+    Obter ID de um campo específico
+    
+    Args:
+        table_name: Nome da tabela
+        field_name: Nome do campo
+        
+    Returns:
+        ID do campo ou string vazia se não encontrado
+    """
+    schema = get_airtable_schema()
+    
+    for table in schema.get('tables', []):
+        if table['name'] == table_name:
+            for field in table.get('fields', []):
+                if field.get('name') == field_name:
+                    return field.get('id', '')
+    
+    return ''
+
+
+def add_select_option(table_name: str, field_name: str, new_option: str) -> bool:
+    """
+    Adicionar nova opção a um campo Single Select
+    
+    Args:
+        table_name: Nome da tabela
+        field_name: Nome do campo
+        new_option: Nova opção a adicionar
+        
+    Returns:
+        True se sucesso, False caso contrário
+    """
+    config = get_airtable_config()
+    schema = get_airtable_schema()
+    
+    # Encontrar table_id e field_id
+    table_id = None
+    field_id = None
+    current_choices = []
+    
+    for table in schema.get('tables', []):
+        if table['name'] == table_name:
+            table_id = table.get('id')
+            for field in table.get('fields', []):
+                if field.get('name') == field_name:
+                    field_id = field.get('id')
+                    current_choices = field.get('options', {}).get('choices', [])
+                    break
+            break
+    
+    if not table_id or not field_id:
+        st.error(f"Campo {field_name} não encontrado na tabela {table_name}")
+        return False
+    
+    # Verificar se opção já existe
+    existing_names = [choice['name'] for choice in current_choices]
+    if new_option in existing_names:
+        st.warning(f"Opção '{new_option}' já existe!")
+        return False
+    
+    # Adicionar nova opção à lista
+    new_choices = current_choices + [{"name": new_option}]
+    
+    headers = {
+        "Authorization": f"Bearer {config['api_key']}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "options": {
+            "choices": new_choices
+        }
+    }
+    
+    try:
+        response = requests.patch(
+            f"https://api.airtable.com/v0/meta/bases/{config['base_id']}/tables/{table_id}/fields/{field_id}",
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+        
+        # Limpar cache para forçar reload
+        get_airtable_schema.clear()
+        
+        return True
+    except Exception as e:
+        st.error(f"Erro ao adicionar opção: {e}")
+        return False
+
+
+def remove_select_option(table_name: str, field_name: str, option_to_remove: str) -> bool:
+    """
+    Remover opção de um campo Single Select
+    
+    Args:
+        table_name: Nome da tabela
+        field_name: Nome do campo
+        option_to_remove: Opção a remover
+        
+    Returns:
+        True se sucesso, False caso contrário
+    """
+    config = get_airtable_config()
+    schema = get_airtable_schema()
+    
+    # Encontrar table_id e field_id
+    table_id = None
+    field_id = None
+    current_choices = []
+    
+    for table in schema.get('tables', []):
+        if table['name'] == table_name:
+            table_id = table.get('id')
+            for field in table.get('fields', []):
+                if field.get('name') == field_name:
+                    field_id = field.get('id')
+                    current_choices = field.get('options', {}).get('choices', [])
+                    break
+            break
+    
+    if not table_id or not field_id:
+        st.error(f"Campo {field_name} não encontrado na tabela {table_name}")
+        return False
+    
+    # Remover opção da lista
+    new_choices = [choice for choice in current_choices if choice['name'] != option_to_remove]
+    
+    if len(new_choices) == len(current_choices):
+        st.warning(f"Opção '{option_to_remove}' não encontrada!")
+        return False
+    
+    headers = {
+        "Authorization": f"Bearer {config['api_key']}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "options": {
+            "choices": new_choices
+        }
+    }
+    
+    try:
+        response = requests.patch(
+            f"https://api.airtable.com/v0/meta/bases/{config['base_id']}/tables/{table_id}/fields/{field_id}",
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+        
+        # Limpar cache para forçar reload
+        get_airtable_schema.clear()
+        
+        return True
+    except Exception as e:
+        st.error(f"Erro ao remover opção: {e}")
+        return False

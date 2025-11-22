@@ -26,8 +26,9 @@ def render(data_manager: DataManager):
         return
     
     # Tabs
-    tab_users, tab_config, tab_logs = st.tabs([
+    tab_users, tab_options, tab_config, tab_logs = st.tabs([
         "👥 Utilizadores",
+        "🏷️ Opções de Campos",
         "⚙️ Configurações",
         "📜 Registos"
     ])
@@ -202,6 +203,127 @@ def render(data_manager: DataManager):
                                 st.rerun()
                             else:
                                 theme.show_error("Erro ao criar utilizador")
+    
+    # === TAB: OPÇÕES DE CAMPOS ===
+    with tab_options:
+        st.subheader("🏷️ Gestão de Opções de Campos")
+        st.markdown("Adicionar ou remover opções dos campos Single Select")
+        
+        # Selecionar tabela e campo
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            table_options = {
+                "Itens": ["Categoria", "Estado", "Unidade"],
+                "Movimentos": ["Motivo"],
+                "Local": ["Local", "Orientação no Local", "Contencao"],
+                "Usuarios": ["Função"]
+            }
+            
+            selected_table = st.selectbox(
+                "📊 Selecione a Tabela",
+                list(table_options.keys())
+            )
+        
+        with col2:
+            available_fields = table_options.get(selected_table, [])
+            selected_field = st.selectbox(
+                "🏷️ Selecione o Campo",
+                available_fields
+            )
+        
+        if selected_table and selected_field:
+            st.markdown("---")
+            
+            # Importar funções aqui para evitar import circular
+            from src.schema_sync import (
+                get_options_with_fallback, 
+                add_select_option, 
+                remove_select_option
+            )
+            
+            # Obter opções atuais
+            current_options = get_options_with_fallback(selected_table, selected_field)
+            
+            # Mostrar opções atuais
+            st.markdown(f"### 📋 Opções Atuais de **{selected_field}**")
+            
+            if current_options:
+                col_metric, col_list = st.columns([1, 3])
+                
+                with col_metric:
+                    st.metric("Total de Opções", len(current_options))
+                
+                with col_list:
+                    for idx, option in enumerate(current_options, 1):
+                        st.text(f"{idx}. {option}")
+            else:
+                theme.show_info("Nenhuma opção definida")
+            
+            st.markdown("---")
+            
+            # Adicionar nova opção
+            col_add, col_remove = st.columns(2)
+            
+            with col_add:
+                st.markdown("#### ➕ Adicionar Nova Opção")
+                
+                with st.form("form_add_option", clear_on_submit=True):
+                    new_option = st.text_input(
+                        "Nova Opção *",
+                        placeholder="Digite o nome da nova opção..."
+                    )
+                    
+                    add_btn = st.form_submit_button(
+                        "➕ Adicionar",
+                        use_container_width=True,
+                        type="primary"
+                    )
+                    
+                    if add_btn:
+                        if not new_option or not new_option.strip():
+                            theme.show_error("Por favor, digite uma opção válida!")
+                        else:
+                            with st.spinner("A adicionar opção..."):
+                                success = add_select_option(selected_table, selected_field, new_option.strip())
+                                
+                                if success:
+                                    theme.show_success(f"Opção '{new_option}' adicionada com sucesso!")
+                                    st.balloons()
+                                    st.rerun()
+            
+            with col_remove:
+                st.markdown("#### 🗑️ Remover Opção")
+                
+                if current_options:
+                    with st.form("form_remove_option"):
+                        option_to_remove = st.selectbox(
+                            "Selecione a opção a remover",
+                            current_options
+                        )
+                        
+                        st.warning("⚠️ **Atenção:** Remover uma opção pode afetar registos existentes que a utilizam!")
+                        
+                        confirm_remove = st.checkbox("Confirmo que desejo remover esta opção")
+                        
+                        remove_btn = st.form_submit_button(
+                            "🗑️ Remover",
+                            use_container_width=True,
+                            type="secondary"
+                        )
+                        
+                        if remove_btn:
+                            if not confirm_remove:
+                                theme.show_warning("Por favor, confirme a remoção marcando a caixa acima")
+                            else:
+                                with st.spinner("A remover opção..."):
+                                    success = remove_select_option(selected_table, selected_field, option_to_remove)
+                                    
+                                    if success:
+                                        theme.show_success(f"Opção '{option_to_remove}' removida com sucesso!")
+                                        st.rerun()
+                else:
+                    theme.show_info("Nenhuma opção disponível para remover")
     
     # === TAB: CONFIGURAÇÕES ===
     with tab_config:
