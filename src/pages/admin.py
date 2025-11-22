@@ -207,23 +207,10 @@ def render(data_manager: DataManager):
     # === TAB: OPÇÕES DE CAMPOS ===
     with tab_options:
         st.subheader("🏷️ Gestão de Opções de Campos")
-        
-        st.warning("""
-        ⚠️ **Limitação do Airtable Meta API**: A API pode bloquear modificações em campos Single Select 
-        quando há registos a utilizá-los. 
-        
-        **Solução alternativa recomendada:**
-        1. Aceda ao [Airtable](https://airtable.com) diretamente
-        2. Abra a base do Inventário
-        3. Clique no nome do campo (ex: "Contenção", "Local", "Orientação")
-        4. Selecione "Edit field"
-        5. Adicione novas opções manualmente
-        6. As opções aparecem automaticamente na aplicação (cache de 1 hora)
-        """)
+        st.markdown("Visualize e adicione opções aos campos Single Select")
         
         st.markdown("---")
-        st.markdown("### 🔍 Visualizar Opções Atuais")
-        st.markdown("Consulte as opções disponíveis em cada campo:")
+        st.markdown("### 🔍 Opções Disponíveis por Campo")
         
         # Selecionar tabela e campo
         col1, col2 = st.columns(2)
@@ -271,76 +258,6 @@ def render(data_manager: DataManager):
                         st.text(f"{idx}. {option}")
             else:
                 theme.show_info("Nenhuma opção definida")
-            
-            st.markdown("---")
-            
-            st.info("""
-            💡 **Modo Experimental**: Tente adicionar/remover opções abaixo. 
-            Se não funcionar devido às limitações do Airtable, use o método manual descrito acima.
-            """)
-            
-            # Adicionar nova opção
-            col_add, col_remove = st.columns(2)
-            
-            with col_add:
-                st.markdown("#### ➕ Adicionar Nova Opção")
-                
-                with st.form("form_add_option", clear_on_submit=True):
-                    new_option = st.text_input(
-                        "Nova Opção *",
-                        placeholder="Digite o nome da nova opção..."
-                    )
-                    
-                    add_btn = st.form_submit_button(
-                        "➕ Adicionar",
-                        use_container_width=True,
-                        type="primary"
-                    )
-                    
-                    if add_btn:
-                        if not new_option or not new_option.strip():
-                            theme.show_error("Por favor, digite uma opção válida!")
-                        else:
-                            with st.spinner("A adicionar opção..."):
-                                success = add_select_option(selected_table, selected_field, new_option.strip())
-                                
-                                if success:
-                                    theme.show_success(f"Opção '{new_option}' adicionada com sucesso!")
-                                    st.balloons()
-                                    st.rerun()
-            
-            with col_remove:
-                st.markdown("#### 🗑️ Remover Opção")
-                
-                if current_options:
-                    with st.form("form_remove_option"):
-                        option_to_remove = st.selectbox(
-                            "Selecione a opção a remover",
-                            current_options
-                        )
-                        
-                        st.warning("⚠️ **Atenção:** Remover uma opção pode afetar registos existentes que a utilizam!")
-                        
-                        confirm_remove = st.checkbox("Confirmo que desejo remover esta opção")
-                        
-                        remove_btn = st.form_submit_button(
-                            "🗑️ Remover",
-                            use_container_width=True,
-                            type="secondary"
-                        )
-                        
-                        if remove_btn:
-                            if not confirm_remove:
-                                theme.show_warning("Por favor, confirme a remoção marcando a caixa acima")
-                            else:
-                                with st.spinner("A remover opção..."):
-                                    success = remove_select_option(selected_table, selected_field, option_to_remove)
-                                    
-                                    if success:
-                                        theme.show_success(f"Opção '{option_to_remove}' removida com sucesso!")
-                                        st.rerun()
-                else:
-                    theme.show_info("Nenhuma opção disponível para remover")
     
     # === TAB: CONFIGURAÇÕES ===
     with tab_config:

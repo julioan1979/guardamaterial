@@ -4,6 +4,7 @@ Módulo para sincronizar opções de campos Single Select com Airtable
 import requests
 import streamlit as st
 from typing import Dict, List
+from copy import deepcopy
 from src.config import get_airtable_config
 
 
@@ -227,7 +228,7 @@ def add_select_option(table_name: str, field_name: str, new_option: str) -> bool
     
     # Preservar estrutura completa das choices existentes (com IDs e cores)
     # e adicionar nova opção com cor padrão (Airtable gera o ID automaticamente)
-    new_choices = current_choices.copy()
+    new_choices = deepcopy(current_choices)
     
     # Determinar cor padrão baseado nas opções existentes
     default_color = "blueLight2"  # Cor padrão do Airtable
