@@ -2,14 +2,21 @@
 
 Aplicação em [Streamlit](https://streamlit.io/) para gerir o inventário das diferentes secções de um agrupamento de escuteiros, com persistência dos dados no [Airtable](https://airtable.com/).
 
+## Guia rápido para utilizadores
+1. Abra a aplicação e escolha a secção que pretende consultar.
+2. Entre com o seu email e palavra-passe para aceder ao inventário.
+3. Crie um novo artigo ou edite um existente sempre que precisar de atualizar o stock.
+4. Registe entradas ou saídas para manter o histórico de movimentos em dia.
+5. Exporte os artigos e os movimentos para CSV a partir do menu lateral.
+
 ## Funcionalidades
 - Dashboard com resumo de artigos, quantidade total e alertas de stock baixo.
 - Gestão de artigos: criar, atualizar ou remover itens do inventário.
-- Registo de movimentos (entradas/saídas) com histórico completo e exportação para CSV.
+- Registo de movimentos (entradas/saídas) com histórico completo.
 - Personalização das secções do agrupamento diretamente na aplicação.
-- Download do inventário e dos movimentos em formato CSV.
+- Exportação do inventário e dos movimentos em formato CSV.
 
-## Configuração
+## Configuração (admin)
 1. Crie (ou reutilize) uma base no Airtable com duas tabelas:
    - **Inventário** com campos `Artigo`, `Secção`, `Quantidade`, `Stock Mínimo`, `Localização`, `Notas`, `Atualizado em`.
    - **Movimentos** com campos `Data`, `Artigo`, `Secção`, `Quantidade`, `Responsável`, `Tipo`, `Notas`.
