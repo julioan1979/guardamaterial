@@ -7,6 +7,7 @@ from datetime import datetime, date
 
 from src.data_manager import DataManager
 from src.ui import theme
+from src.schema_sync import get_options_with_fallback
 
 
 def render(data_manager: DataManager):
@@ -158,9 +159,10 @@ def render(data_manager: DataManager):
                     step=0.1
                 )
                 
+                motivos = [""] + get_options_with_fallback("Movimentos", "Motivo")
                 motivo = st.selectbox(
                     "🎯 Motivo *",
-                    ["", "Entrada", "Saída", "Transferência", "Devolução", "Inventário", "Outro"]
+                    motivos
                 )
                 
                 movimento_date = st.date_input(

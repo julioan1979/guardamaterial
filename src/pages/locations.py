@@ -6,6 +6,7 @@ import pandas as pd
 
 from src.data_manager import DataManager
 from src.ui import theme
+from src.schema_sync import get_options_with_fallback
 
 
 def render(data_manager: DataManager):
@@ -77,20 +78,23 @@ def render(data_manager: DataManager):
             col1, col2 = st.columns(2)
             
             with col1:
+                local_options = get_options_with_fallback("Local", "Local")
                 local = st.selectbox(
                     "🏢 Local *",
-                    ["", "Sede", "Armazém", "Casa do Grupo", "Sala de Atividades", "Exterior", "Outro"]
+                    [""] + local_options
                 )
                 
+                orientacao_options = get_options_with_fallback("Local", "Orientação no Local")
                 orientacao = st.selectbox(
                     "🧭 Orientação no Local",
-                    ["", "Norte", "Sul", "Este", "Oeste", "Centro", "Entrada", "Fundo"]
+                    [""] + orientacao_options
                 )
             
             with col2:
+                contencao_options = get_options_with_fallback("Local", "Contencao")
                 contencao = st.selectbox(
                     "📦 Contenção",
-                    ["", "Armário", "Estante", "Caixa", "Gaveta", "Prateleira", "Palete", "Outro"]
+                    [""] + contencao_options
                 )
             
             notas = st.text_area(

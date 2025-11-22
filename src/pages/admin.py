@@ -8,6 +8,7 @@ import bcrypt
 from src.data_manager import DataManager
 from src.ui import theme
 from src.config import USER_ROLES
+from src.schema_sync import get_options_with_fallback
 
 
 def render(data_manager: DataManager):
@@ -116,9 +117,10 @@ def render(data_manager: DataManager):
                     )
                 
                 with col2:
+                    funcao_options = get_options_with_fallback("Usuarios", "Função")
                     funcao = st.selectbox(
                         "🎭 Função *",
-                        ["", "Administrador", "Gestor", "Utilizador"]
+                        [""] + funcao_options
                     )
                     
                     password = st.text_input(

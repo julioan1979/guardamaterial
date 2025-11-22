@@ -7,6 +7,7 @@ from datetime import datetime
 
 from src.data_manager import DataManager
 from src.ui import theme
+from src.schema_sync import get_options_with_fallback
 
 
 def render(data_manager: DataManager):
@@ -120,20 +121,24 @@ def render(data_manager: DataManager):
                     placeholder="Ex: Corda de escalada"
                 )
                 
+                # Obter opções dinâmicas do Airtable
+                categorias = [""] + get_options_with_fallback("Itens", "Categoria")
                 categoria = st.selectbox(
                     "🏷️ Categoria *",
-                    ["", "Equipamento", "Consumível", "Vestuário", "Cozinha", "Atividades", "Outro"]
+                    categorias
                 )
                 
+                estados = [""] + get_options_with_fallback("Itens", "Estado")
                 estado = st.selectbox(
                     "📊 Estado *",
-                    ["", "Novo", "Bom", "Usado", "Danificado", "Para reparar"]
+                    estados
                 )
             
             with col2:
+                unidades = [""] + get_options_with_fallback("Itens", "Unidade")
                 unidade = st.selectbox(
                     "📏 Unidade *",
-                    ["", "unidade", "kg", "litro", "metro", "caixa", "pacote"]
+                    unidades
                 )
                 
                 st.info("💡 **Nota:** A quantidade será controlada através dos movimentos de entrada/saída")
@@ -205,29 +210,40 @@ def render(data_manager: DataManager):
                 with st.form("form_edit_item"):
                     col1, col2 = st.columns(2)
                     
+                    # Obter opções dinâmicas
+                    categorias = get_options_with_fallback("Itens", "Categoria")
+                    estados = get_options_with_fallback("Itens", "Estado")
+                    unidades = get_options_with_fallback("Itens", "Unidade")
+                    
                     with col1:
                         material = st.text_input(
                             "📝 Nome do Material",
                             value=item_row.get("Material", "")
                         )
                         
+                        current_cat = item_row.get("Categoria", "")
+                        cat_index = categorias.index(current_cat) if current_cat in categorias else 0
                         categoria = st.selectbox(
                             "🏷️ Categoria",
-                            ["Equipamento", "Consumível", "Vestuário", "Cozinha", "Atividades", "Outro"],
-                            index=["Equipamento", "Consumível", "Vestuário", "Cozinha", "Atividades", "Outro"].index(item_row.get("Categoria", "Equipamento")) if item_row.get("Categoria") in ["Equipamento", "Consumível", "Vestuário", "Cozinha", "Atividades", "Outro"] else 0
+                            categorias,
+                            index=cat_index
                         )
                     
                     with col2:
+                        current_estado = item_row.get("Estado", "")
+                        estado_index = estados.index(current_estado) if current_estado in estados else 0
                         estado = st.selectbox(
                             "📊 Estado",
-                            ["Novo", "Bom", "Usado", "Danificado", "Para reparar"],
-                            index=["Novo", "Bom", "Usado", "Danificado", "Para reparar"].index(item_row.get("Estado", "Bom")) if item_row.get("Estado") in ["Novo", "Bom", "Usado", "Danificado", "Para reparar"] else 1
+                            estados,
+                            index=estado_index
                         )
                         
+                        current_unidade = item_row.get("Unidade", "")
+                        unidade_index = unidades.index(current_unidade) if current_unidade in unidades else 0
                         unidade = st.selectbox(
                             "📏 Unidade",
-                            ["unidade", "kg", "litro", "metro", "caixa", "pacote"],
-                            index=["unidade", "kg", "litro", "metro", "caixa", "pacote"].index(item_row.get("Unidade", "unidade")) if item_row.get("Unidade") in ["unidade", "kg", "litro", "metro", "caixa", "pacote"] else 0
+                            unidades,
+                            index=unidade_index
                         )
                     
                     st.markdown("---")
