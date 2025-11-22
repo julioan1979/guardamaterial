@@ -235,12 +235,8 @@ def render(data_manager: DataManager):
         if selected_table and selected_field:
             st.markdown("---")
             
-            # Importar funções aqui para evitar import circular
-            from src.schema_sync import (
-                get_options_with_fallback, 
-                add_select_option, 
-                remove_select_option
-            )
+            # Importar funções adicionais do schema_sync
+            from src.schema_sync import add_select_option, remove_select_option
             
             # Obter opções atuais
             current_options = get_options_with_fallback(selected_table, selected_field)
