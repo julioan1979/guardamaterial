@@ -246,7 +246,9 @@ def add_select_option(table_name: str, field_name: str, new_option: str) -> bool
         "Content-Type": "application/json"
     }
     
+    # Incluir name do campo conforme documentação oficial Airtable
     payload = {
+        "name": field_name,
         "type": "singleSelect",
         "options": {
             "choices": new_choices
@@ -335,7 +337,9 @@ def remove_select_option(table_name: str, field_name: str, option_to_remove: str
         "Content-Type": "application/json"
     }
     
+    # Incluir name do campo conforme documentação oficial Airtable
     payload = {
+        "name": field_name,
         "type": "singleSelect",
         "options": {
             "choices": new_choices
