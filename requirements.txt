@@ -1,4 +1,6 @@
 streamlit>=1.31
 pyairtable>=2.1.0
 pandas>=2.1
-bcrypt
+plotly>=5.18.0
+bcrypt>=4.1.0
+requests>=2.31.0
