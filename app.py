@@ -503,6 +503,11 @@ def obter_configuracao() -> AirtableConfig:
             ajuda="Nome da tabela onde estão os artigos",
         )
         _mostrar_campos_tabela("Inventário", metadata, inventory_table)
+        _alertar_tabela_desconhecida(
+            metadata,
+            inventory_table,
+            variavel_env="AIRTABLE_INVENTORY_TABLE",
+        )
         transactions_table = _selecionar_tabela(
             "Tabela de Movimentos",
             valor_atual=config.transactions_table,
@@ -511,6 +516,11 @@ def obter_configuracao() -> AirtableConfig:
             ajuda="Nome da tabela onde ficam registados os movimentos",
         )
         _mostrar_campos_tabela("Movimentos", metadata, transactions_table)
+        _alertar_tabela_desconhecida(
+            metadata,
+            transactions_table,
+            variavel_env="AIRTABLE_TRANSACTIONS_TABLE",
+        )
         seccoes_extra_input = st.text_input(
             "Secções adicionais (separadas por vírgula)",
             value=st.session_state.get("seccoes_extra_input", ""),
@@ -602,6 +612,34 @@ def _mostrar_campos_tabela(
         return
 
     st.caption(f"Estrutura conhecida para {titulo}: {', '.join(campos)}.")
+
+
+def _alertar_tabela_desconhecida(
+    metadata: Optional[BaseMetadata],
+    nome_tabela: str,
+    *,
+    variavel_env: str,
+) -> None:
+    """Mostra um aviso quando a tabela configurada não aparece nos metadados.
+
+    Isto ajuda a diagnosticar erros 403/404 relacionados com nomes de tabela
+    incorretos ou permissões insuficientes para a base indicada.
+    """
+
+    if not metadata or not metadata.tabelas or not nome_tabela.strip():
+        return
+
+    if metadata.obter_tabela(nome_tabela):
+        return
+
+    tabelas_conhecidas = ", ".join(metadata.nomes_tabelas) or "nenhuma tabela visível"
+    st.warning(
+        "A tabela configurada não foi encontrada na base atual. "
+        f"'{nome_tabela}' não consta nos metadados carregados ({tabelas_conhecidas}). "
+        f"Confirme o nome no Airtable ou ajuste a variável {variavel_env} na barra lateral "
+        "ou via variáveis de ambiente.",
+        icon="⚠️",
+    )
 
 
 def obter_cliente_airtable(config: AirtableConfig) -> Api:
