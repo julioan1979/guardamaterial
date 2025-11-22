@@ -209,6 +209,19 @@ def render(data_manager: DataManager):
         st.subheader("🏷️ Gestão de Opções de Campos")
         st.markdown("Visualize e adicione opções aos campos Single Select")
         
+        st.info("""
+        💡 **Recomendação**: Para adicionar/remover opções de forma mais confiável, use o Airtable diretamente:
+        
+        1. 📱 Abra: [airtable.com/appIQ3DP7p2EwI4PW](https://airtable.com/appIQ3DP7p2EwI4PW) (Base do Inventário)
+        2. 🔍 Clique no nome do campo que deseja editar (ex: "Contenção", "Local")
+        3. ⚙️ Selecione "Customize field type"
+        4. ➕ Adicione ou remova opções na lista
+        5. 💾 As alterações aparecem aqui automaticamente (cache de 1 hora)
+        6. 🔄 Para atualização imediata: vá a **Configurações** → **Limpar Cache**
+        
+        *A funcionalidade via API abaixo é experimental e pode ter limitações.*
+        """)
+        
         st.markdown("---")
         st.markdown("### 🔍 Opções Disponíveis por Campo")
         

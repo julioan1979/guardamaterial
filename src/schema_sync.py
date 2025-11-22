@@ -266,8 +266,20 @@ def add_select_option(table_name: str, field_name: str, new_option: str) -> bool
         
         return True
     except requests.exceptions.HTTPError as e:
-        error_msg = f"Erro HTTP {e.response.status_code}: {e.response.text}"
-        st.error(f"Erro ao adicionar opção: {error_msg}")
+        if e.response.status_code == 422:
+            st.error("""
+            ❌ **Não foi possível adicionar a opção via API**
+            
+            Possíveis causas:
+            - Plano do Airtable sem permissões para Meta API
+            - Campo tem restrições de modificação
+            - Limite de opções atingido
+            
+            **Solução recomendada**: Adicione a opção diretamente no Airtable (instruções acima)
+            """)
+        else:
+            error_msg = f"Erro HTTP {e.response.status_code}: {e.response.text}"
+            st.error(f"Erro ao adicionar opção: {error_msg}")
         return False
     except Exception as e:
         st.error(f"Erro ao adicionar opção: {e}")
